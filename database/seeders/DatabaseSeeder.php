@@ -19,5 +19,9 @@ class DatabaseSeeder extends Seeder
             'name' => 'Test User',
             'email' => 'test@example.com',
         ]);
+        \App\Models\ExeatCategory::firstOrCreate(['name' => 'medical'], ['description' => 'Medical Exeat', 'status' => 'active']);
+        \App\Models\ExeatCategory::firstOrCreate(['name' => 'casual'], ['description' => 'Casual Exeat', 'status' => 'active']);
+        \App\Models\ExeatCategory::firstOrCreate(['name' => 'emergency'], ['description' => 'Emergency Exeat', 'status' => 'active']);
+        \App\Models\ExeatCategory::firstOrCreate(['name' => 'official'], ['description' => 'Official Exeat', 'status' => 'active']);
     }
 }
