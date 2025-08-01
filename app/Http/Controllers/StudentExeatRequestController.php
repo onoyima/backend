@@ -46,7 +46,7 @@ class StudentExeatRequestController extends Controller
         // Get category
         $category = ExeatCategory::find($validated['category_id']);
         $isMedical = strtolower($category->name) === 'medical';
-        $initialStatus = $isMedical ? 'medical_review' : 'recommendation1';
+        $initialStatus = $isMedical ? 'cmd_review' : 'deputy-dean_review';
         $exeat = ExeatRequest::create([
             'student_id' => $user->id,
             'matric_no' => $studentAcademic ? $studentAcademic->matric_no : null,
@@ -108,7 +108,7 @@ public function profile(Request $request)
 public function categories()
 {
     return response()->json([
-        'categories' => ExeatCategory::all(['id', 'name'])
+        'categories' => ExeatCategory::all(['id', 'name', 'description'])
     ]);
 }
 
@@ -116,7 +116,10 @@ public function categories()
     public function index(Request $request)
     {
         $user = $request->user();
-        $exeats = ExeatRequest::where('student_id', $user->id)->orderBy('created_at', 'desc')->get();
+        $exeats = ExeatRequest::where('student_id', $user->id)
+            ->with('category:id,name')
+            ->orderBy('created_at', 'desc')
+            ->get();
         return response()->json(['exeat_requests' => $exeats]);
     }
 
@@ -124,7 +127,10 @@ public function categories()
     public function show(Request $request, $id)
     {
         $user = $request->user();
-        $exeat = ExeatRequest::where('id', $id)->where('student_id', $user->id)->first();
+        $exeat = ExeatRequest::where('id', $id)
+            ->where('student_id', $user->id)
+            ->with('category:id,name')
+            ->first();
         if (!$exeat) {
             return response()->json(['message' => 'Exeat request not found.'], 404);
         }

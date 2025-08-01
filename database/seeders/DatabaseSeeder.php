@@ -23,5 +23,10 @@ class DatabaseSeeder extends Seeder
         \App\Models\ExeatCategory::firstOrCreate(['name' => 'casual'], ['description' => 'Casual Exeat', 'status' => 'active']);
         \App\Models\ExeatCategory::firstOrCreate(['name' => 'emergency'], ['description' => 'Emergency Exeat', 'status' => 'active']);
         \App\Models\ExeatCategory::firstOrCreate(['name' => 'official'], ['description' => 'Official Exeat', 'status' => 'active']);
+        
+        // Seed chat system data
+        $this->call([
+            ChatSeeder::class,
+        ]);
     }
 }

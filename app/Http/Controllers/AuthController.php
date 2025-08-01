@@ -7,7 +7,6 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Auth;
 use App\Models\Staff;
 use App\Models\Student;
-use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Log;
 
 class AuthController extends Controller
@@ -20,26 +19,40 @@ class AuthController extends Controller
         ]);
 
         // Try staff first
-        $staff = Staff::where('email', $request->email)->first();
+        $staff = Staff::with(['contacts', 'exeatRoles.role'])->where('email', $request->email)->first();
         if ($staff) {
             if (Hash::check($request->password, $staff->password)) {
                 $token = $staff->createToken('api-token')->plainTextToken;
-                // Fetch roles
-                $roles = $staff->exeatRoles()->with('role')->get()->pluck('role.name')->toArray();
-                // Hardcode staff_id 596 as admin
+
+                // Safely extract role names
+                $roles = $staff->exeatRoles->pluck('role.name')->filter()->toArray();
+
+                // Optional hardcoded admin override
                 if (in_array($staff->id, [596, 2, 3]) && !in_array('admin', $roles)) {
                     $roles[] = 'admin';
                 }
-                Log::info('Login success', ['email' => $request->email, 'user_type' => 'staff', 'user_id' => $staff->id]);
+
+                Log::info('Login success', [
+                    'email' => $request->email,
+                    'user_type' => 'staff',
+                    'user_id' => $staff->id
+                ]);
+
                 return response()->json([
                     'user' => $staff,
+                    'contacts' => $staff->contacts,
+                    'exeat_roles' => $staff->exeatRoles,
                     'role' => 'staff',
                     'roles' => $roles,
                     'token' => $token,
-                    'message' => 'Login successful!'
+                    'lname' => $staff->lname,
+                    'message' => $staff->lname . ' logged in successfully.'
                 ]);
             } else {
-                Log::warning('Login failed: Incorrect password', ['email' => $request->email, 'user_type' => 'staff']);
+                Log::warning('Login failed: Incorrect password', [
+                    'email' => $request->email,
+                    'user_type' => 'staff'
+                ]);
                 return response()->json([
                     'message' => 'Incorrect password.'
                 ], 401);
@@ -47,25 +60,39 @@ class AuthController extends Controller
         }
 
         // Try student
-        $student = Student::where('email', $request->email)->first();
+        $student = Student::with(['academics', 'contacts', 'medicals'])->where('email', $request->email)->first();
         if ($student) {
             if (Hash::check($request->password, $student->password)) {
                 $token = $student->createToken('api-token')->plainTextToken;
-                Log::info('Login success', ['email' => $request->email, 'user_type' => 'student', 'user_id' => $student->id]);
+
+                Log::info('Login success', [
+                    'email' => $request->email,
+                    'user_type' => 'student',
+                    'user_id' => $student->id
+                ]);
+
                 return response()->json([
                     'user' => $student,
+                    'academics' => $student->academics,
+                    'contacts' => $student->contacts,
+                    'medicals' => $student->medicals,
                     'role' => 'student',
                     'token' => $token,
-                    'message' => 'Login successful!'
+                    'lname' => $student->lname,
+                    'message' => $student->lname . ' logged in successfully.'
                 ]);
             } else {
-                Log::warning('Login failed: Incorrect password', ['email' => $request->email, 'user_type' => 'student']);
+                Log::warning('Login failed: Incorrect password', [
+                    'email' => $request->email,
+                    'user_type' => 'student'
+                ]);
                 return response()->json([
                     'message' => 'Incorrect password.'
                 ], 401);
             }
         }
 
+        // Email not found
         Log::warning('Login failed: Email not found', ['email' => $request->email]);
         return response()->json([
             'message' => 'Email not found.'
@@ -78,7 +105,10 @@ class AuthController extends Controller
             $user = $request->user();
             if ($user) {
                 $user->currentAccessToken()->delete();
-                Log::info('Logout success', ['user_id' => $user->id, 'user_type' => get_class($user)]);
+                Log::info('Logout success', [
+                    'user_id' => $user->id,
+                    'user_type' => get_class($user)
+                ]);
                 return response()->json([
                     'message' => 'Logout successful.'
                 ]);

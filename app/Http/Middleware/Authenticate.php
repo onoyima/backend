@@ -22,8 +22,10 @@ class Authenticate
      * Get the path the user should be redirected to when they are not authenticated.
      */
     protected function redirectTo($request)
-    {
-        // For API requests, return null so a 401 is sent
-        return null;
+{
+    if (! $request->expectsJson()) {
+        abort(401, 'Unauthorized');
     }
+}
+
 }

@@ -73,6 +73,11 @@ class ExeatRequest extends Model
         return $this->hasMany(AuditLog::class, 'target_id')->where('target_type', 'exeat_request');
     }
 
+    public function category()
+    {
+        return $this->belongsTo(ExeatCategory::class);
+    }
+
     // Helper method to check if medical review is required
     public function needsMedicalReview(): bool
     {

@@ -29,6 +29,7 @@ use App\Http\Controllers\ReportController;
 use App\Http\Controllers\AdminExeatController;
 use App\Http\Controllers\AdminConfigController;
 use App\Http\Controllers\ExeatController; // ✅ Add this
+use App\Http\Controllers\ChatController;
 
 // Log test route
 Route::get('/test-log', function () {
@@ -152,3 +153,29 @@ Route::get('/api/audit-logs', [LookupController::class, 'auditLogs']);
 // ✅ Notifications
 Route::middleware('auth:sanctum')->get('/notifications', [NotificationController::class, 'index']);
 Route::middleware('auth:sanctum')->post('/notifications/mark-read', [NotificationController::class, 'markRead']);
+Route::middleware('auth:sanctum')->get('/chat/participants/search', [ChatController::class, 'searchParticipants']);
+
+// Chat routes
+Route::middleware('auth:sanctum')->prefix('chat')->group(function () {
+    // Conversation routes
+    Route::get('/conversations', [ChatController::class, 'getConversations']);
+    Route::post('/conversations/direct', [ChatController::class, 'createDirectConversation']);
+    Route::post('/conversations/group', [ChatController::class, 'createGroupConversation']);
+
+    // Message routes
+    Route::get('/conversations/{conversation}/messages', [ChatController::class, 'getMessages']);
+    Route::post('/conversations/{conversation}/messages', [ChatController::class, 'sendMessage']);
+    Route::post('/conversations/{conversation}/messages/read', [ChatController::class, 'markMessagesAsRead']);
+    Route::post('/conversations/{conversation}/messages/search', [ChatController::class, 'searchMessages']);
+    Route::delete('/conversations/{conversation}/messages/{message}', [ChatController::class, 'deleteMessage']);
+
+    // Group management routes
+    Route::post('/conversations/{conversation}/participants', [ChatController::class, 'addGroupParticipants']);
+
+    // Admin chat routes
+    Route::middleware('admin')->group(function () {
+        Route::post('/conversations/{conversation}/suspend', [ChatController::class, 'suspendConversation']);
+        Route::post('/conversations/{conversation}/unsuspend', [ChatController::class, 'unsuspendConversation']);
+    });
+});
+
