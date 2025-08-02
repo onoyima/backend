@@ -54,22 +54,7 @@ class Staff extends Model
     {
         return $this->hasMany(StaffAssignedRole::class, 'staff_id');
     }
-    public function staffCourses()
-    {
-        return $this->hasMany(StaffCourse::class, 'staff_id');
-    }
-    public function employmentCategories()
-    {
-        return $this->hasMany(StaffEmploymentCategory::class, 'staff_id');
-    }
-    public function leaveSummaries()
-    {
-        return $this->hasMany(StaffLeaveSummary::class, 'staff_id');
-    }
-    public function leaves()
-    {
-        return $this->hasMany(StaffLeave::class, 'staff_id');
-    }
+   
     public function positions()
     {
         return $this->hasMany(StaffPosition::class, 'staff_id');
@@ -94,6 +79,12 @@ class Staff extends Model
     {
         return $this->hasMany(StaffExeatRole::class, 'staff_id');
     }
+
+    public function exeat_roles()
+    {
+        return $this->belongsToMany(ExeatRole::class, 'staff_exeat_roles', 'staff_id', 'exeat_role_id');
+    }
+
     public function hostelSignouts()
     {
         return $this->hasMany(HostelSignout::class, 'hostel_admin_id');

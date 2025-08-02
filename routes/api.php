@@ -1,181 +1,138 @@
 <?php
 
-use Illuminate\Support\Facades\RateLimiter;
-use Illuminate\Cache\RateLimiting\Limit;
-
-RateLimiter::for('api', function ($request) {
-    return Limit::perMinute(60)->by(optional($request->user())->id ?: $request->ip());
-});
-
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\StudentController;
+use App\Http\Controllers\StaffController;
+use App\Http\Controllers\RoleController;
+use App\Http\Controllers\ConfigController;
 use App\Http\Controllers\StudentExeatRequestController;
 use App\Http\Controllers\StaffExeatRequestController;
 use App\Http\Controllers\ParentConsentController;
-use App\Http\Controllers\LookupController;
-use App\Http\Controllers\ExeatAttachmentController;
 use App\Http\Controllers\NotificationController;
-use App\Http\Controllers\AdminStaffController;
-use App\Http\Controllers\AdminRoleController;
-use App\Http\Controllers\AdminStudentController;
-use App\Http\Controllers\MeController;
-use App\Http\Controllers\DeanController;
-use App\Http\Controllers\CmdController;
-use App\Http\Controllers\HostelController;
-use App\Http\Controllers\SecurityController;
-use App\Http\Controllers\NotificationPreferenceController;
 use App\Http\Controllers\CommunicationController;
 use App\Http\Controllers\ReportController;
-use App\Http\Controllers\AdminExeatController;
-use App\Http\Controllers\AdminConfigController;
-use App\Http\Controllers\ExeatController; // ✅ Add this
 use App\Http\Controllers\ChatController;
 
-// Log test route
-Route::get('/test-log', function () {
-    \Log::info('Test log entry from /api/test-log');
-    return response()->json(['message' => 'Log written']);
-});
+/*
+|--------------------------------------------------------------------------
+| API Routes
+|--------------------------------------------------------------------------
+*/
 
-// Authenticated routes
-Route::middleware('auth:sanctum')->get('/me', [MeController::class, 'me']);
+// Public routes
+Route::post('/login', [AuthController::class, 'login']);
+Route::post('/register', [AuthController::class, 'register']);
 
+Route::get('/parent/exeat-consent/{token}/{action}', [ParentConsentController::class, 'handleWebConsent']);
+// Protected routes
 Route::middleware('auth:sanctum')->group(function () {
-    // Student routes
-    Route::post('/student/exeat-requests', [StudentExeatRequestController::class, 'store']);
-    Route::get('/student/exeat-requests', [StudentExeatRequestController::class, 'index']);
-    Route::get('/student/exeat-requests/{id}', [StudentExeatRequestController::class, 'show']);
-    Route::post('/student/exeat-requests/{id}/appeal', [StudentExeatRequestController::class, 'appeal']);
-    Route::get('/student/exeat-requests/{id}/download', [StudentExeatRequestController::class, 'download']);
-    Route::get('/student/profile', [StudentExeatRequestController::class, 'profile']);
-    Route::get('/student/exeat-categories', [StudentExeatRequestController::class, 'categories']);
+    // User profile
 
-    // Exeat attachments
-    Route::post('/exeat-requests/{id}/attachments', [ExeatAttachmentController::class, 'store']);
-    Route::get('/exeat-requests/{id}/attachments', [ExeatAttachmentController::class, 'index']);
+    Route::get('/me', [\App\Http\Controllers\MeController::class, 'me']);
+    Route::get('/user', [AuthController::class, 'user']);
+    Route::post('/logout', [AuthController::class, 'logout']);
+    Route::put('/profile', [AuthController::class, 'updateProfile']);
+    Route::put('/password', [AuthController::class, 'updatePassword']);
+
+    // Student routes
+    Route::prefix('student')->group(function () {
+        Route::get('/exeat-requests', [StudentExeatRequestController::class, 'index']);
+        Route::post('/exeat-requests', [StudentExeatRequestController::class, 'store']);
+        Route::get('/exeat-requests/{id}', [StudentExeatRequestController::class, 'show']);
+        Route::get('/exeat-requests/{id}/history', [StudentExeatRequestController::class, 'history']);
+    });
 
     // Staff routes
-    Route::get('/staff/exeat-requests', [StaffExeatRequestController::class, 'index']);
-    Route::get('/staff/exeat-requests/{id}', [StaffExeatRequestController::class, 'show']);
-    Route::post('/staff/exeat-requests/{id}/approve', [StaffExeatRequestController::class, 'approve']);
-    Route::post('/staff/exeat-requests/{id}/reject', [StaffExeatRequestController::class, 'reject']);
-    Route::post('/staff/exeat-requests/{id}/send-parent-consent', [StaffExeatRequestController::class, 'sendParentConsent']);
+    Route::prefix('staff')->group(function () {
+        Route::get('/dashboard', [StaffExeatRequestController::class, 'dashboard']);
+        Route::get('/exeat-requests', [StaffExeatRequestController::class, 'index']);
+        Route::get('/exeat-requests/{id}', [StaffExeatRequestController::class, 'show']);
+        Route::post('/exeat-requests/{id}/approve', [StaffExeatRequestController::class, 'approve']);
+        Route::post('/exeat-requests/{id}/reject', [StaffExeatRequestController::class, 'reject']);
+        Route::post('/exeat-requests/{id}/send-parent-consent', [StaffExeatRequestController::class, 'sendParentConsent']);
+        Route::get('/exeat-requests/{id}/history', [StaffExeatRequestController::class, 'history']);
+    });
+
+    // Parent consent routes
+    Route::prefix('parent')->group(function () {
+        Route::post('/consent/{token}/approve', [ParentConsentController::class, 'approve']);
+        Route::post('/consent/{token}/decline', [ParentConsentController::class, 'decline']);
+    });
+
+    // Admin routes
+    Route::middleware('role:admin')->group(function () {
+        // Staff management
+        Route::apiResource('staffs', StaffController::class);
+        Route::post('/staffs/{id}/roles', [StaffController::class, 'assignRoles']);
+        Route::get('/staffs/{id}/roles', [StaffController::class, 'getRoles']);
+
+        // Student management
+        Route::apiResource('students', StudentController::class);
+        Route::post('/students/import', [StudentController::class, 'import']);
+        Route::get('/students/export', [StudentController::class, 'export']);
+
+        // Role management
+        Route::apiResource('roles', RoleController::class);
+        Route::get('/permissions', [RoleController::class, 'permissions']);
+
+        // System configuration
+        Route::get('/config', [ConfigController::class, 'index']);
+        Route::put('/config', [ConfigController::class, 'update']);
+
+        // Exeat management
+        Route::get('/exeats', [StaffExeatRequestController::class, 'all']);
+        Route::get('/exeats/export', [StaffExeatRequestController::class, 'export']);
+    });
 
     // Dean routes
-    Route::get('/dean/exeat-requests', [DeanController::class, 'index']);
-    Route::post('/dean/exeat-requests/bulk-approve', [DeanController::class, 'bulkApprove']);
+    Route::middleware('role:dean')->group(function () {
+        Route::get('/dean/dashboard', [StaffExeatRequestController::class, 'deanDashboard']);
+        Route::get('/dean/exeat-requests', [StaffExeatRequestController::class, 'deanRequests']);
+    });
 
     // CMD routes
-    Route::get('/cmd/exeat-requests', [CmdController::class, 'index']);
-    Route::post('/cmd/exeat-requests/{id}/approve', [CmdController::class, 'approve']);
-
-    // Admin Staff Management
-    Route::get('/admin/staff', [AdminStaffController::class, 'index']);
-    Route::get('/admin/staff/assignments', [AdminStaffController::class, 'assignments']);
-    Route::post('/admin/staff', [AdminStaffController::class, 'store']);
-    Route::get('/admin/staff/{id}', [AdminStaffController::class, 'show']);
-    Route::put('/admin/staff/{id}', [AdminStaffController::class, 'update']);
-    Route::delete('/admin/staff/{id}', [AdminStaffController::class, 'destroy']);
-    Route::post('/admin/staff/{id}/assign-exeat-role', [AdminStaffController::class, 'assignExeatRole']);
-
-    // Admin Student Management
-    Route::get('/admin/students', [AdminStudentController::class, 'index']);
-    Route::post('/admin/students', [AdminStudentController::class, 'store']);
-    Route::get('/admin/students/{id}', [AdminStudentController::class, 'show']);
-    Route::put('/admin/students/{id}', [AdminStudentController::class, 'update']);
-    Route::delete('/admin/students/{id}', [AdminStudentController::class, 'destroy']);
-
-    // Role Management
-    Route::get('/admin/roles', [AdminRoleController::class, 'index']);
-    Route::post('/admin/roles', [AdminRoleController::class, 'store']);
-    Route::put('/admin/roles/{id}', [AdminRoleController::class, 'update']);
-    Route::delete('/admin/roles/{id}', [AdminRoleController::class, 'destroy']);
-
-    // Hostel & Security
-    Route::post('/hostel/signout/{exeat_request_id}', [HostelController::class, 'signOut']);
-    Route::post('/hostel/signin/{exeat_request_id}', [HostelController::class, 'signIn']);
-    Route::post('/security/validate', [SecurityController::class, 'validateStudent']);
-    Route::post('/security/signout/{exeat_request_id}', [SecurityController::class, 'signOut']);
-    Route::post('/security/signin/{exeat_request_id}', [SecurityController::class, 'signIn']);
-    Route::get('/hostels', [HostelController::class, 'index']);
-    Route::post('/hostels/{id}/assign-admin', [HostelController::class, 'assignAdmin']);
-
-    // Notification Preferences
-    Route::get('/user/notification-preferences', [NotificationPreferenceController::class, 'show']);
-    Route::put('/user/notification-preferences', [NotificationPreferenceController::class, 'update']);
-
-    // Communication Integration
-    Route::post('/communication/test', [CommunicationController::class, 'test']);
-    Route::get('/communication/channels', [CommunicationController::class, 'channels']);
-
-    // Reports
-    Route::get('/reports/exeats', [ReportController::class, 'exeats']);
-    Route::get('/reports/audit-logs', [ReportController::class, 'auditLogs']);
-
-    // Admin Exeat Management
-    Route::post('/admin/exeats/{id}/revoke', [AdminExeatController::class, 'revoke']);
-
-    // Admin Config
-    Route::get('/admin/config', [AdminConfigController::class, 'show']);
-    Route::put('/admin/config', [AdminConfigController::class, 'update']);
-
-    // ✅ Exeat Approval and Parent Consent (authenticated)
-    Route::prefix('exeats')->group(function () {
-        Route::post('{exeat}/approvals/{approval}/approve', [ExeatController::class, 'approve']);
-        Route::post('{exeat}/approvals/{approval}/reject', [ExeatController::class, 'reject']);
-        Route::post('{exeat}/parent-consent/request', [ExeatController::class, 'requestParentConsent']);
+    Route::middleware('role:cmd')->group(function () {
+        Route::get('/cmd/dashboard', [StaffExeatRequestController::class, 'cmdDashboard']);
+        Route::get('/cmd/exeat-requests', [StaffExeatRequestController::class, 'cmdRequests']);
     });
-});
 
-// ✅ Parent Consent (public - no auth)
-Route::prefix('exeats')->group(function () {
-    Route::get('parent-consent/approve/{token}', [ExeatController::class, 'parentConsentApprove']);
-    Route::get('parent-consent/decline/{token}', [ExeatController::class, 'parentConsentDecline']);
-});
-
-
-
-// ✅ Parent Consent via token
-Route::get('/parent/consent/{token}', [ParentConsentController::class, 'show']);
-Route::post('/parent/consent/{token}/approve', [ParentConsentController::class, 'approve']);
-Route::post('/parent/consent/{token}/decline', [ParentConsentController::class, 'decline']);
-
-// ✅ Admin: Bulk parent reminder
-Route::middleware(['auth:sanctum', 'can:admin'])->post('/parent/consent/remind', [ParentConsentController::class, 'remind']);
-
-// ✅ Lookup & analytics
-Route::get('/lookups/roles', [LookupController::class, 'roles']);
-Route::get('/lookups/hostel-admins', [LookupController::class, 'hostelAdmins']);
-Route::get('/lookups/hostels', [LookupController::class, 'hostels']);
-Route::get('/analytics/exeat-usage', [LookupController::class, 'exeatUsage']);
-Route::get('/api/audit-logs', [LookupController::class, 'auditLogs']);
-
-// ✅ Notifications
-Route::middleware('auth:sanctum')->get('/notifications', [NotificationController::class, 'index']);
-Route::middleware('auth:sanctum')->post('/notifications/mark-read', [NotificationController::class, 'markRead']);
-Route::middleware('auth:sanctum')->get('/chat/participants/search', [ChatController::class, 'searchParticipants']);
-
-// Chat routes
-Route::middleware('auth:sanctum')->prefix('chat')->group(function () {
-    // Conversation routes
-    Route::get('/conversations', [ChatController::class, 'getConversations']);
-    Route::post('/conversations/direct', [ChatController::class, 'createDirectConversation']);
-    Route::post('/conversations/group', [ChatController::class, 'createGroupConversation']);
-
-    // Message routes
-    Route::get('/conversations/{conversation}/messages', [ChatController::class, 'getMessages']);
-    Route::post('/conversations/{conversation}/messages', [ChatController::class, 'sendMessage']);
-    Route::post('/conversations/{conversation}/messages/read', [ChatController::class, 'markMessagesAsRead']);
-    Route::post('/conversations/{conversation}/messages/search', [ChatController::class, 'searchMessages']);
-    Route::delete('/conversations/{conversation}/messages/{message}', [ChatController::class, 'deleteMessage']);
-
-    // Group management routes
-    Route::post('/conversations/{conversation}/participants', [ChatController::class, 'addGroupParticipants']);
-
-    // Admin chat routes
-    Route::middleware('admin')->group(function () {
-        Route::post('/conversations/{conversation}/suspend', [ChatController::class, 'suspendConversation']);
-        Route::post('/conversations/{conversation}/unsuspend', [ChatController::class, 'unsuspendConversation']);
+    // Hostel routes
+    Route::middleware('role:hostel_admin')->group(function () {
+        Route::get('/hostel/dashboard', [StaffExeatRequestController::class, 'hostelDashboard']);
+        Route::get('/hostel/exeat-requests', [StaffExeatRequestController::class, 'hostelRequests']);
     });
+
+    // Security routes
+    Route::middleware('role:security')->group(function () {
+        Route::get('/security/dashboard', [StaffExeatRequestController::class, 'securityDashboard']);
+        Route::get('/security/exeat-requests', [StaffExeatRequestController::class, 'securityRequests']);
+    });
+
+    // Lookup routes
+    Route::get('/lookup/departments', [ConfigController::class, 'departments']);
+    Route::get('/lookup/hostels', [ConfigController::class, 'hostels']);
+    Route::get('/lookup/roles', [ConfigController::class, 'roles']);
+
+    // Analytics routes
+    Route::get('/analytics/exeat-usage', [ReportController::class, 'exeatUsage']);
+    Route::get('/analytics/student-trends', [ReportController::class, 'studentTrends']);
+    Route::get('/analytics/staff-performance', [ReportController::class, 'staffPerformance']);
+
+    // Notification routes
+    Route::get('/notifications', [NotificationController::class, 'index']);
+    Route::post('/notifications/mark-read', [NotificationController::class, 'markAsRead']);
+    Route::delete('/notifications/{id}', [NotificationController::class, 'destroy']);
+
+    // Communication routes
+    Route::post('/send-email', [CommunicationController::class, 'sendEmail']);
+    Route::post('/send-sms', [CommunicationController::class, 'sendSMS']);
+
+    // Chat routes
+    Route::get('/chats', [ChatController::class, 'index']);
+    Route::post('/chats', [ChatController::class, 'store']);
+    Route::get('/chats/{id}', [ChatController::class, 'show']);
+    Route::post('/chats/{id}/messages', [ChatController::class, 'sendMessage']);
 });
 

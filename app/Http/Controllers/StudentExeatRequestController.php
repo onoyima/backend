@@ -12,6 +12,8 @@ use App\Models\StudentAcademic;
 use App\Models\StudentContact;
 use App\Models\VunaAccomodationHistory;
 use App\Models\VunaAccomodation;
+use App\Models\AuditLog;
+use App\Models\ExeatApproval;
 
 class StudentExeatRequestController extends Controller
 {
@@ -173,5 +175,45 @@ public function categories()
             'qr_code' => $qrCode,
             'download_url' => null // Implement PDF/QR download as needed
         ]);
+    }
+
+    /**
+     * Get the history of an exeat request
+     *
+     * @param Request $request
+     * @param int $id
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function history(Request $request, $id)
+    {
+        $user = $request->user();
+        $exeat = ExeatRequest::where('id', $id)->where('student_id', $user->id)->first();
+        if (!$exeat) {
+            return response()->json(['message' => 'Exeat request not found.'], 404);
+        }
+
+        // Get all audit logs related to this exeat request
+        $auditLogs = AuditLog::where('target_type', 'exeat_request')
+            ->where('target_id', $id)
+            ->orderBy('timestamp', 'desc')
+            ->with(['staff:id,fname,lname', 'student:id,fname,lname'])
+            ->get();
+
+        // Get all approvals with their staff information
+        $approvals = ExeatApproval::where('exeat_request_id', $id)
+            ->with('staff:id,fname,lname')
+            ->orderBy('updated_at', 'desc')
+            ->get();
+
+        // Combine the data for a complete history
+        $history = [
+            'audit_logs' => $auditLogs,
+            'approvals' => $approvals,
+            'exeat_request' => $exeat
+        ];
+
+        Log::info('Student viewed exeat request history', ['student_id' => $user->id, 'exeat_id' => $id]);
+
+        return response()->json(['history' => $history]);
     }
 }

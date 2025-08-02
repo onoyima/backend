@@ -45,7 +45,7 @@ class MeController extends Controller
             // Structure the staff profile
             $profile = [
                 'personal' => [
-                    'first_name' => $user->fname,
+                    'fname' => $user->fname,
                     'middle_name' => $user->mname,
                     'last_name' => $user->lname,
                     'gender' => $user->gender,
@@ -92,7 +92,7 @@ class MeController extends Controller
             // Structure the student profile
             $profile = [
                 'personal' => [
-                    'first_name' => $user->fname,
+                    'fname' => $user->fname,
                     'middle_name' => $user->mname,
                     'last_name' => $user->lname,
                     'gender' => $user->gender,

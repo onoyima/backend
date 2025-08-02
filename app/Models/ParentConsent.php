@@ -10,7 +10,7 @@ class ParentConsent extends Model
     use HasFactory;
     protected $table = 'parent_consents';
     protected $fillable = [
-        'exeat_request_id', 'student_contact_id', 'consent_status', 'consent_method', 'consent_token', 'consent_timestamp'
+        'exeat_request_id', 'student_contact_id', 'consent_status', 'consent_method', 'consent_token', 'expires_at', 'consent_timestamp'
     ];
 
     public function exeatRequest()

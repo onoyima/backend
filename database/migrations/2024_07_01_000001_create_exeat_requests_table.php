@@ -23,7 +23,7 @@ return new class extends Migration {
             $table->string('parent_phone_no_two', 30)->nullable();
             $table->string('parent_email', 100)->nullable();
             $table->string('student_accommodation', 100)->nullable();
-            $table->enum('status', ['pending', 'medical_review', 'recommendation1', 'parent_pending', 'dean_final_pending', 'hostel_signout', 'security_signout', 'security_signin', 'hostel_signin', 'completed', 'rejected', 'appeal'])->default('pending');
+            $table->enum('status', ['pending', 'cmd_review', 'deputy-dean_review', 'parent_consent', 'dean_review', 'hostel_signout', 'security_signout', 'security_signin', 'hostel_signin', 'completed', 'rejected', 'appeal'])->default('pending');
 $table->boolean('is_medical')->default(false);
             $table->timestamps();
 

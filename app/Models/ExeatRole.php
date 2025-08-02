@@ -17,4 +17,10 @@ class ExeatRole extends Model
     {
         return $this->hasMany(StaffExeatRole::class, 'exeat_role_id');
     }
+
+    public function staff()
+{
+    return $this->belongsToMany(Staff::class, 'staff_exeat_roles', 'exeat_role_id', 'staff_id');
+}
+
 } 
