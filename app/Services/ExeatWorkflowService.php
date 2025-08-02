@@ -97,7 +97,7 @@ class ExeatWorkflowService
             Log::warning("WorkflowService: Unknown or final status {$exeatRequest->status} for ExeatRequest ID {$exeatRequest->id}");
             return;
     }
-
+    $this->notifyStudentStatusChange($exeatRequest);
     $exeatRequest->save();
 
     // ✅ Automatically trigger parent consent mail
@@ -203,6 +203,7 @@ EOD;
         $oldStatus = $exeatRequest->status;
         $exeatRequest->status = 'dean_review';
         $exeatRequest->save();
+        $this->notifyStudentStatusChange($exeatRequest);
 
         $this->createAuditLog(
             $exeatRequest,
@@ -231,6 +232,7 @@ EOD;
         $oldStatus = $exeatRequest->status;
         $exeatRequest->status = 'rejected';
         $exeatRequest->save();
+        $this->notifyStudentStatusChange($exeatRequest);
 
         $this->createAuditLog(
             $exeatRequest,
@@ -298,6 +300,39 @@ EOD;
     {
     // Optional: Replace this with Twilio Voice API
     \Log::info("Simulated call to $to with message: $message");
+}
+
+
+protected function notifyStudentStatusChange(ExeatRequest $exeatRequest)
+{
+    $student = $exeatRequest->student;
+
+    if (!$student || !$student->username) {
+        \Log::warning("No email available for student ID {$exeatRequest->student_id}");
+        return;
+    }
+
+    $message = <<<EOT
+Dear {$student->fname} {$student->lname},
+
+Your exeat request status has changed.
+
+Current status: {$exeatRequest->status}
+Reason: {$exeatRequest->reason}
+
+Thank you.
+
+— VERITAS University Exeat Management System
+EOT;
+
+    try {
+        \Mail::raw($message, function ($msg) use ($student) {
+            $msg->to($student->username) // Email is stored in 'username' field
+                ->subject('Exeat Request Status Updated');
+        });
+    } catch (\Exception $e) {
+        \Log::error('Failed to send status update email', ['error' => $e->getMessage()]);
+    }
 }
 
 

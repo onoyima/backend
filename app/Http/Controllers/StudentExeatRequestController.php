@@ -41,9 +41,15 @@ class StudentExeatRequestController extends Controller
             $accommodation = $accommodationModel ? $accommodationModel->name : null;
         }
         // Prevent new request if previous is not completed
-        $existing = ExeatRequest::where('student_id', $user->id)->where('status', '!=', 'completed')->first();
+        // Prevent new request if previous is not completed
+        $existing = ExeatRequest::where('student_id', $user->id)
+            ->whereNotIn('status', ['completed', 'rejected']) // Optional: allow new request after rejection
+            ->first();
+
         if ($existing) {
-            return response()->json(['message' => 'You cannot submit a new exeat request until your previous one is completed.'], 403);
+            return response()->json([
+                'message' => 'You already have an active exeat request. Please wait until it is completed or rejected before submitting a new one.'
+            ], 403);
         }
         // Get category
         $category = ExeatCategory::find($validated['category_id']);
@@ -74,6 +80,14 @@ class StudentExeatRequestController extends Controller
             'status' => 'pending',
         ]);
         Log::info('Student created exeat request', ['student_id' => $user->id, 'exeat_id' => $exeat->id]);
+        try {
+            \Mail::raw("Your exeat request has been submitted and is now under review.\n\nReason: {$exeat->reason}\nStatus: {$exeat->status}", function ($msg) use ($user) {
+                $msg->to($user->username) // Use 'username' as email
+                    ->subject('Exeat Request Submitted');
+            });
+        } catch (\Exception $e) {
+            \Log::error('Failed to send initial submission email', ['error' => $e->getMessage()]);
+        }
         return response()->json(['message' => 'Exeat request created successfully.', 'exeat_request' => $exeat], 201);
     }
 

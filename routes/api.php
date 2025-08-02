@@ -42,6 +42,9 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/exeat-requests', [StudentExeatRequestController::class, 'store']);
         Route::get('/exeat-requests/{id}', [StudentExeatRequestController::class, 'show']);
         Route::get('/exeat-requests/{id}/history', [StudentExeatRequestController::class, 'history']);
+      // ✅ ADD THESE TWO ROUTES:
+        Route::get('/exeat-categories', [StudentExeatRequestController::class, 'categories']);
+        Route::get('/profile', [StudentExeatRequestController::class, 'profile']);
     });
 
     // Staff routes
