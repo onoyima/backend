@@ -62,137 +62,143 @@ class ExeatWorkflowService
     }
 
   protected function advanceStage(ExeatRequest $exeatRequest)
-{
-    $oldStatus = $exeatRequest->status;
+    {
+        $oldStatus = $exeatRequest->status;
 
-    switch ($exeatRequest->status) {
-        case 'pending':
-            $exeatRequest->status = $exeatRequest->is_medical ? 'cmd_review' : 'deputy-dean_review';
-            break;
-        case 'cmd_review':
-            $exeatRequest->status = 'deputy-dean_review';
-            break;
-        case 'deputy-dean_review':
-            $exeatRequest->status = 'parent_consent';
-            break;
-        case 'parent_consent':
-            $exeatRequest->status = 'dean_review';
-            break;
-        case 'dean_review':
-            $exeatRequest->status = 'hostel_signout';
-            break;
-        case 'hostel_signout':
-            $exeatRequest->status = 'security_signout';
-            break;
-        case 'security_signout':
-            $exeatRequest->status = 'security_signin';
-            break;
-        case 'security_signin':
-            $exeatRequest->status = 'hostel_signin';
-            break;
-        case 'hostel_signin':
-            $exeatRequest->status = 'completed';
-            break;
-        default:
-            Log::warning("WorkflowService: Unknown or final status {$exeatRequest->status} for ExeatRequest ID {$exeatRequest->id}");
-            return;
-    }
-    $this->notifyStudentStatusChange($exeatRequest);
-    $exeatRequest->save();
+        switch ($exeatRequest->status) {
+            case 'pending':
+                $exeatRequest->status = $exeatRequest->is_medical ? 'cmd_review' : 'deputy-dean_review';
+                break;
+            case 'cmd_review':
+                $exeatRequest->status = 'deputy-dean_review';
+                break;
+            case 'deputy-dean_review':
+                $exeatRequest->status = 'parent_consent';
+                break;
+            case 'parent_consent':
+                $exeatRequest->status = 'dean_review';
+                break;
+            case 'dean_review':
+                $exeatRequest->status = 'hostel_signout';
+                break;
+            case 'hostel_signout':
+                $exeatRequest->status = 'security_signout';
+                break;
+            case 'security_signout':
+                $exeatRequest->status = 'security_signin';
+                break;
+            case 'security_signin':
+                $exeatRequest->status = 'hostel_signin';
+                break;
+            case 'hostel_signin':
+                $exeatRequest->status = 'completed';
+                break;
+            default:
+                Log::warning("WorkflowService: Unknown or final status {$exeatRequest->status} for ExeatRequest ID {$exeatRequest->id}");
+                return;
+        }
+        $this->notifyStudentStatusChange($exeatRequest);
+        $exeatRequest->save();
 
-    // ✅ Automatically trigger parent consent mail
-   if ($exeatRequest->status === 'parent_consent') {
-      $staffId = $exeatRequest->approvals()->latest()->first()->staff_id ?? null;
+        // ✅ Automatically trigger parent consent mail
+    if ($exeatRequest->status === 'parent_consent') {
+        $staffId = $exeatRequest->approvals()->latest()->first()->staff_id ?? null;
 
-        $this->sendParentConsent($exeatRequest, $exeatRequest->preferred_mode_of_contact ?? 'email', null, $staffId);
-    }
+            $this->sendParentConsent($exeatRequest, $exeatRequest->preferred_mode_of_contact ?? 'email', null, $staffId);
+        }
 
-    Log::info('WorkflowService: Exeat advanced to next stage', [
-        'exeat_id' => $exeatRequest->id,
-        'old_status' => $oldStatus,
-        'new_status' => $exeatRequest->status,
-    ]);
-}
-
-public function sendParentConsent(ExeatRequest $exeatRequest, string $method, ?string $message = null, ?int $staffId = null)
-{
-    $exeatRequest->loadMissing('student');
-    $oldStatus = $exeatRequest->status;
-
-    // Set expiration for 24 hours from now
-    $expiresAt = Carbon::now()->addHours(24);
-
-    $parentConsent = ParentConsent::updateOrCreate(
-        ['exeat_request_id' => $exeatRequest->id],
-        [
-            'consent_status'    => 'pending',
-            'consent_method'    => $method,
-            'consent_token'     => uniqid('consent_', true),
-            'consent_message'   => $message,
-            'consent_timestamp' => null,
-            'expires_at'        => $expiresAt,
-        ]
-    );
-
-    $student      = $exeatRequest->student;
-    $parentEmail  = $exeatRequest->parent_email;
-    $parentPhone  = $exeatRequest->parent_phone_no;
-    $studentName  = $student ? "{$student->fname} {$student->lname}" : '';
-    $reason       = $exeatRequest->reason;
-
-    $linkApprove  = url('/api/parent/exeat-consent/'.$parentConsent->consent_token.'/approve');
-    $linkReject   = url('/api/parent/exeat-consent/'.$parentConsent->consent_token.'/reject');
-
-    $expiryText = $expiresAt->format('F j, Y g:i A');
-
-    $notificationEmail = <<<EOD
-Hello,
-
-We would like to inform you that $studentName has requested permission to leave campus due to the following reason: "$reason".
-
-Please review and provide your consent before $expiryText:
-
-Approve: $linkApprove  
-Reject: $linkReject
-
-Thank you for your support.
-
-— VERITAS University Exeat Management Team
-EOD;
-
-    $notificationSMS = "Dear Parent of $studentName, reason: \"$reason\".\nApprove: $linkApprove\nReject: $linkReject\nValid until: $expiryText";
-
-    try {
-        \Mail::raw($notificationEmail, fn($msg) => $msg->to($parentEmail)->subject('Exeat Consent Request'));
-        \Mail::raw($notificationEmail, fn($msg) => $msg->to('onoyimab@veritas.edu.ng')->subject('Exeat Consent Request'));
-    } catch (\Exception $e) {
-        Log::error('Email failed', ['error' => $e->getMessage()]);
+        Log::info('WorkflowService: Exeat advanced to next stage', [
+            'exeat_id' => $exeatRequest->id,
+            'old_status' => $oldStatus,
+            'new_status' => $exeatRequest->status,
+        ]);
     }
 
-    Log::info('Parent consent requested', [
-        'exeat_id' => $exeatRequest->id,
-        'method' => $method,
-        'parent_email' => $parentEmail,
-        'parent_phone' => $parentPhone,
-        'expires_at' => $expiryText
-    ]);
+    public function sendParentConsent(ExeatRequest $exeatRequest, string $method, ?string $message = null, ?int $staffId = null)
+    {
+        $exeatRequest->loadMissing('student');
+        $oldStatus = $exeatRequest->status;
 
-    $exeatRequest->status = 'parent_consent';
-    $exeatRequest->save();
+        // Set expiration for 24 hours from now
+        $expiresAt = Carbon::now()->addHours(24);
 
-    if ($staffId) {
-        $this->createAuditLog(
-            $exeatRequest,
-            $staffId,
-            $exeatRequest->student_id,
-            'parent_consent_request',
-            "Changed from {$oldStatus} to parent_consent",
-            "Method: {$method}"
+        $parentConsent = ParentConsent::updateOrCreate(
+            ['exeat_request_id' => $exeatRequest->id],
+            [
+                'consent_status'    => 'pending',
+                'consent_method'    => $method,
+                'consent_token'     => uniqid('consent_', true),
+                'consent_message'   => $message,
+                'consent_timestamp' => null,
+                'expires_at'        => $expiresAt,
+            ]
         );
-    }
 
-    return $parentConsent;
-}
+        $student      = $exeatRequest->student;
+        $parentEmail  = $exeatRequest->parent_email;
+        $parentPhone  = $exeatRequest->parent_phone_no;
+        $studentName  = $student ? "{$student->fname} {$student->lname}" : '';
+        $reason       = $exeatRequest->reason;
+
+        $linkApprove  = url('/api/parent/exeat-consent/'.$parentConsent->consent_token.'/approve');
+        $linkReject   = url('/api/parent/exeat-consent/'.$parentConsent->consent_token.'/reject');
+
+        $expiryText = $expiresAt->format('F j, Y g:i A');
+
+        $notificationEmail = <<<EOD
+    Hello,
+
+    We would like to inform you that $studentName has requested permission to leave campus due to the following reason: "$reason".
+
+    Please review and provide your consent before $expiryText:
+
+    Approve: $linkApprove  
+    Reject: $linkReject
+
+    Thank you for your support.
+
+    — VERITAS University Exeat Management Team
+    EOD;
+
+        $notificationSMS = "Dear Parent of $studentName, reason: \"$reason\".\nApprove: $linkApprove\nReject: $linkReject\nValid until: $expiryText";
+
+        try {
+            \Mail::raw($notificationEmail, fn($msg) => $msg->to($parentEmail)->subject('Exeat Consent Request'));
+            \Mail::raw($notificationEmail, fn($msg) => $msg->to('onoyimab@veritas.edu.ng')->subject('Exeat Consent Request'));
+            // Uncomment to enable SMS/WhatsApp notifications for parent consent:
+            // if ($method === 'text') {
+            //     $this->sendSmsOrWhatsapp($parentPhone, $notificationSMS, 'sms');
+            // } else if ($method === 'whatsapp') {
+            //     $this->sendSmsOrWhatsapp($parentPhone, $notificationSMS, 'whatsapp');
+            // }
+        } catch (\Exception $e) {
+            Log::error('Email failed', ['error' => $e->getMessage()]);
+        }
+
+        Log::info('Parent consent requested', [
+            'exeat_id' => $exeatRequest->id,
+            'method' => $method,
+            'parent_email' => $parentEmail,
+            'parent_phone' => $parentPhone,
+            'expires_at' => $expiryText
+        ]);
+
+        $exeatRequest->status = 'parent_consent';
+        $exeatRequest->save();
+
+        if ($staffId) {
+            $this->createAuditLog(
+                $exeatRequest,
+                $staffId,
+                $exeatRequest->student_id,
+                'parent_consent_request',
+                "Changed from {$oldStatus} to parent_consent",
+                "Method: {$method}"
+            );
+        }
+
+        return $parentConsent;
+    }
     public function parentConsentApprove(ParentConsent $parentConsent)
     {
         $parentConsent->consent_status = 'approved';

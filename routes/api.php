@@ -5,7 +5,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\StudentController;
 use App\Http\Controllers\StaffController;
-use App\Http\Controllers\RoleController;
+use App\Http\Controllers\AdminRoleController;
 use App\Http\Controllers\ConfigController;
 use App\Http\Controllers\StudentExeatRequestController;
 use App\Http\Controllers\StaffExeatRequestController;
@@ -65,29 +65,15 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     // Admin routes
-    Route::middleware('role:admin')->group(function () {
-        // Staff management
-        Route::apiResource('staffs', StaffController::class);
-        Route::post('/staffs/{id}/roles', [StaffController::class, 'assignRoles']);
-        Route::get('/staffs/{id}/roles', [StaffController::class, 'getRoles']);
+    
 
-        // Student management
-        Route::apiResource('students', StudentController::class);
-        Route::post('/students/import', [StudentController::class, 'import']);
-        Route::get('/students/export', [StudentController::class, 'export']);
 
-        // Role management
-        Route::apiResource('roles', RoleController::class);
-        Route::get('/permissions', [RoleController::class, 'permissions']);
-
-        // System configuration
-        Route::get('/config', [ConfigController::class, 'index']);
-        Route::put('/config', [ConfigController::class, 'update']);
-
-        // Exeat management
-        Route::get('/exeats', [StaffExeatRequestController::class, 'all']);
-        Route::get('/exeats/export', [StaffExeatRequestController::class, 'export']);
-    });
+ Route::prefix('admin')->middleware('role:admin')->group(function () {
+    Route::get('/roles', [AdminRoleController::class, 'index']);           // GET all assigned roles
+    Route::post('/roles', [AdminRoleController::class, 'store']);          // Assign new role
+    Route::put('/roles/{id}', [AdminRoleController::class, 'update']);     // Update role assignment
+    Route::delete('/roles/{id}', [AdminRoleController::class, 'destroy']); // Unassign role
+});
 
     // Dean routes
     Route::middleware('role:dean')->group(function () {

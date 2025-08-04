@@ -35,7 +35,7 @@ return [
         ],
     ],
 
-    'twilio' => [
+'twilio' => [
   'sid' => env('TWILIO_SID'),
   'token' => env('TWILIO_TOKEN'),
   'sms_from' => env('TWILIO_SMS_FROM'),

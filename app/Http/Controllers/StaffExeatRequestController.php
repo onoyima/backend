@@ -173,86 +173,10 @@ class StaffExeatRequestController extends Controller
         return response()->json(['exeat_request' => $exeatRequest]);
     }
 
- public function approve(StaffExeatApprovalRequest $request, $id)
-    {
-        $user = $request->user();
-        if (!($user instanceof \App\Models\Staff)) {
-            return response()->json(['message' => 'Unauthorized.'], 403);
-        }
-
-        $exeatRequest = ExeatRequest::find($id);
-        if (!$exeatRequest) {
-            return response()->json(['message' => 'Exeat request not found.'], 404);
-        }
-
-        $roleNames = $user->exeatRoles()->with('role')->get()->pluck('role.name')->toArray();
-        $allowedStatuses = $this->getAllowedStatuses($roleNames);
-
-        if (!in_array($exeatRequest->status, $allowedStatuses)) {
-            return response()->json(['message' => 'You do not have permission to approve this request at this stage.'], 403);
-        }
-
-        $validated = $request->validate(['comment' => 'nullable|string']);
-        $workflow = new ExeatWorkflowService();
-
-        try {
-            // Determine acting role for the current exeat status
-            $actingRole = $this->getActingRole($user, $exeatRequest->status);
-
-            // Create approval record dynamically
-            $approval = new \App\Models\ExeatApproval([
-                'exeat_request_id' => $exeatRequest->id,
-                'staff_id' => $user->id,
-                'status' => 'approved',
-                'comment' => $validated['comment'] ?? null,
-                'role' => $actingRole,
-            ]);
-            $approval->save();
-
-            $workflow->approve($exeatRequest, $approval, $approval->comment);
-        } catch (\Exception $ex) {
-            return response()->json(['message' => 'Approval failed: ' . $ex->getMessage()], 400);
-        }
-
-        return response()->json(['message' => 'Exeat request approved.', 'exeat_request' => $exeatRequest]);
-    }
-
-
-
-    public function reject(StaffExeatApprovalRequest $request, $id)
-    {
-        $user = $request->user();
-        if (!($user instanceof \App\Models\Staff)) {
-            return response()->json(['message' => 'Unauthorized.'], 403);
-        }
-
-        $approval = ExeatApproval::where('staff_id', $user->id)->where('exeat_request_id', $id)->first();
-        if (!$approval) {
-            return response()->json(['message' => 'Exeat request not assigned to you or not found.'], 404);
-        }
-
-        $exeatRequest = ExeatRequest::find($id);
-        if (!$exeatRequest) {
-            return response()->json(['message' => 'Exeat request not found.'], 404);
-        }
-
-        $roleNames = $user->exeatRoles()->with('role')->get()->pluck('role.name')->toArray();
-        $allowedStatuses = $this->getAllowedStatuses($roleNames);
-
-        if (!in_array($exeatRequest->status, $allowedStatuses)) {
-            return response()->json(['message' => 'You do not have permission to reject this request.'], 403);
-        }
-
-        $validated = $request->validate(['comment' => 'required|string']);
-        $workflow = new ExeatWorkflowService();
-        $exeatRequest = $workflow->reject($exeatRequest, $approval, $validated['comment']);
-
-        return response()->json(['message' => 'Exeat request rejected.', 'exeat_request' => $exeatRequest]);
-    }
-
-  public function sendParentConsent(Request $request, $id)
+public function approve(StaffExeatApprovalRequest $request, $id)
 {
     $user = $request->user();
+
     if (!($user instanceof \App\Models\Staff)) {
         return response()->json(['message' => 'Unauthorized.'], 403);
     }
@@ -262,24 +186,141 @@ class StaffExeatRequestController extends Controller
         return response()->json(['message' => 'Exeat request not found.'], 404);
     }
 
-    // Optional: prevent triggering it at the wrong time
-    if ($exeatRequest->status !== 'parent_consent') {
-        return response()->json(['message' => 'Parent consent can only be sent at the parent_consent stage.'], 403);
+    $roleNames = $user->exeatRoles()->with('role')->get()->pluck('role.name')->toArray();
+    $allowedStatuses = $this->getAllowedStatuses($roleNames);
+
+    if (!in_array($exeatRequest->status, $allowedStatuses)) {
+        return response()->json(['message' => 'You do not have permission to approve this request at this stage.'], 403);
     }
 
-    $validated = $request->validate([
-        'method' => 'required|string',
-        'message' => 'nullable|string',
-    ]);
+    // ✅ Determine acting role
+    $actingRole = $this->getActingRole($user, $exeatRequest->status);
 
+    // ✅ Prevent duplicate approval for same role and request
+    $alreadyApproved = ExeatApproval::where('exeat_request_id', $exeatRequest->id)
+        ->where('staff_id', $user->id)
+        ->where('role', $actingRole)
+        ->exists();
+
+    if ($alreadyApproved) {
+        return response()->json(['message' => "You have already approved this request as '{$actingRole}'."], 409);
+    }
+
+    $validated = $request->validate(['comment' => 'nullable|string']);
     $workflow = new ExeatWorkflowService();
-    $parentConsent = $workflow->sendParentConsent($exeatRequest, $validated['method'], $validated['message'] ?? null, $user->id);
 
-    return response()->json([
-        'message' => 'Parent consent request sent.',
-        'parent_consent' => $parentConsent,
-    ]);
+    DB::beginTransaction();
+    try {
+        $approval = ExeatApproval::create([
+            'exeat_request_id' => $exeatRequest->id,
+            'staff_id' => $user->id,
+            'status' => 'approved',
+            'comment' => $validated['comment'] ?? null,
+            'role' => $actingRole,
+        ]);
+
+        $workflow->approve($exeatRequest, $approval, $approval->comment);
+
+        DB::commit();
+    } catch (\Throwable $e) {
+        DB::rollBack();
+        return response()->json(['message' => 'Approval failed: ' . $e->getMessage()], 500);
+    }
+
+    return response()->json(['message' => 'Exeat request approved.', 'exeat_request' => $exeatRequest]);
 }
+
+
+
+
+    public function reject(StaffExeatApprovalRequest $request, $id)
+{
+    $user = $request->user();
+
+    if (!($user instanceof \App\Models\Staff)) {
+        return response()->json(['message' => 'Unauthorized.'], 403);
+    }
+
+    $exeatRequest = ExeatRequest::find($id);
+    if (!$exeatRequest) {
+        return response()->json(['message' => 'Exeat request not found.'], 404);
+    }
+
+    $roleNames = $user->exeatRoles()->with('role')->get()->pluck('role.name')->toArray();
+    $allowedStatuses = $this->getAllowedStatuses($roleNames);
+
+    if (!in_array($exeatRequest->status, $allowedStatuses)) {
+        return response()->json(['message' => 'You do not have permission to reject this request.'], 403);
+    }
+
+    // ✅ Determine acting role
+    $actingRole = $this->getActingRole($user, $exeatRequest->status);
+
+    // ✅ Prevent duplicate rejection for same role
+    $alreadyActed = ExeatApproval::where('exeat_request_id', $exeatRequest->id)
+        ->where('staff_id', $user->id)
+        ->where('role', $actingRole)
+        ->exists();
+
+    if ($alreadyActed) {
+        return response()->json(['message' => "You have already taken action on this request as '{$actingRole}'."], 409);
+    }
+
+    $validated = $request->validate(['comment' => 'required|string']);
+    $workflow = new ExeatWorkflowService();
+
+    DB::beginTransaction();
+    try {
+        $approval = ExeatApproval::create([
+            'exeat_request_id' => $exeatRequest->id,
+            'staff_id' => $user->id,
+            'status' => 'rejected',
+            'comment' => $validated['comment'],
+            'role' => $actingRole,
+        ]);
+
+        $workflow->reject($exeatRequest, $approval, $approval->comment);
+
+        DB::commit();
+    } catch (\Throwable $e) {
+        DB::rollBack();
+        return response()->json(['message' => 'Rejection failed: ' . $e->getMessage()], 500);
+    }
+
+    return response()->json(['message' => 'Exeat request rejected.', 'exeat_request' => $exeatRequest]);
+}
+
+
+  public function sendParentConsent(Request $request, $id)
+        {
+            $user = $request->user();
+            if (!($user instanceof \App\Models\Staff)) {
+                return response()->json(['message' => 'Unauthorized.'], 403);
+            }
+
+            $exeatRequest = ExeatRequest::find($id);
+            if (!$exeatRequest) {
+                return response()->json(['message' => 'Exeat request not found.'], 404);
+            }
+
+            // Optional: prevent triggering it at the wrong time
+            if ($exeatRequest->status !== 'parent_consent') {
+                return response()->json(['message' => 'Parent consent can only be sent at the parent_consent stage.'], 403);
+            }
+
+            $validated = $request->validate([
+                'method' => 'required|string',
+                'message' => 'nullable|string',
+            ]);
+
+            $workflow = new ExeatWorkflowService();
+            $parentConsent = $workflow->sendParentConsent($exeatRequest, $validated['method'], $validated['message'] ?? null, $user->id);
+
+            return response()->json([
+                'message' => 'Parent consent request sent.',
+                'parent_consent' => $parentConsent,
+            ]);
+        }
 
     public function history(Request $request, $id)
     {
