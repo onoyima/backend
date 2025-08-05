@@ -6,7 +6,8 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\StudentController;
 use App\Http\Controllers\StaffController;
 use App\Http\Controllers\AdminRoleController;
-use App\Http\Controllers\ConfigController;
+use App\Http\Controllers\AdminConfigController;
+use App\Http\Controllers\AdminStaffController;
 use App\Http\Controllers\StudentExeatRequestController;
 use App\Http\Controllers\StaffExeatRequestController;
 use App\Http\Controllers\ParentConsentController;
@@ -66,13 +67,21 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Admin routes
     
+ Route::middleware(['role:admin'])->prefix('admin')->group(function () {
+    Route::get('/roles', [AdminRoleController::class, 'index']);
+    Route::post('/roles', [AdminRoleController::class, 'store']);
+    Route::put('/roles/{id}', [AdminRoleController::class, 'update']);
+    Route::delete('/roles/{id}', [AdminRoleController::class, 'destroy']);
 
+    Route::get('/staff', [AdminStaffController::class, 'index']);
+    Route::post('/staff', [AdminStaffController::class, 'store']);
+    Route::get('/staff/{id}', [AdminStaffController::class, 'show']);
+    Route::put('/staff/{id}', [AdminStaffController::class, 'update']);
+    Route::delete('/staff/{id}', [AdminStaffController::class, 'destroy']);
 
- Route::prefix('admin')->middleware('role:admin')->group(function () {
-    Route::get('/roles', [AdminRoleController::class, 'index']);           // GET all assigned roles
-    Route::post('/roles', [AdminRoleController::class, 'store']);          // Assign new role
-    Route::put('/roles/{id}', [AdminRoleController::class, 'update']);     // Update role assignment
-    Route::delete('/roles/{id}', [AdminRoleController::class, 'destroy']); // Unassign role
+    Route::get('/staff/assignments', [AdminStaffController::class, 'assignments']);
+    Route::post('/staff/{id}/assign-exeat-role', [AdminStaffController::class, 'assignExeatRole']);
+    Route::delete('/staff/{id}/unassign-exeat-role', [AdminStaffController::class, 'unassignExeatRole']);
 });
 
     // Dean routes
@@ -100,9 +109,9 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     // Lookup routes
-    Route::get('/lookup/departments', [ConfigController::class, 'departments']);
-    Route::get('/lookup/hostels', [ConfigController::class, 'hostels']);
-    Route::get('/lookup/roles', [ConfigController::class, 'roles']);
+    Route::get('/lookup/departments', [AdminConfigController::class, 'departments']);
+    Route::get('/lookup/hostels', [AdminConfigController::class, 'hostels']);
+    Route::get('/lookup/roles', [AdminConfigController::class, 'roles']);
 
     // Analytics routes
     Route::get('/analytics/exeat-usage', [ReportController::class, 'exeatUsage']);

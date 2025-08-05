@@ -34,8 +34,13 @@ class ApiStatusLogger
                 if (strpos($action, '@') !== false) {
                     $controllerClass = explode('@', $action)[0];
                     try {
-                        $reflector = new \ReflectionClass($controllerClass);
-                        $controllerFile = basename($reflector->getFileName());
+                        if (class_exists($controllerClass)) {
+                            Log::info('ApiStatusLogger: Attempting reflection on controllerClass', ['controllerClass' => $controllerClass, 'action' => $action]);
+                            $reflector = new \ReflectionClass($controllerClass);
+                            $controllerFile = basename($reflector->getFileName());
+                        } else {
+                            Log::warning('ApiStatusLogger: Controller class not found or invalid for reflection', ['controllerClass' => $controllerClass, 'action' => $action]);
+                        }
                     } catch (\Exception $e) {
                         $controllerFile = null;
                     }
