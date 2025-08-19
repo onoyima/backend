@@ -13,12 +13,17 @@ class AdminStaffController extends Controller
     public function assignments()
     {
         $staff = Staff::with(['exeatRoles.role'])->get();
+        
+        if ($staff->isEmpty()) {
+            return response()->json(['message' => 'No staff found.', 'history' => []], 200);
+        }
+        
         $history = [];
         foreach ($staff as $s) {
             foreach ($s->exeatRoles as $assignment) {
                 if ($assignment->role) {
                     $history[] = [
-                        'staff_name' => trim($s->fname . ' ' . ($s->middle_name ?? '') . ' ' . $s->lname),
+                        'staff_name' => trim($s->fname . ' ' . ($s->mname ?? '') . ' ' . $s->lname),
                         'staff_email' => $s->email,
                         'role_display_name' => $assignment->role->display_name,
                         'role_name' => $assignment->role->name,
@@ -27,6 +32,11 @@ class AdminStaffController extends Controller
                 }
             }
         }
+        
+        if (empty($history)) {
+            return response()->json(['message' => 'No role assignments found.', 'history' => []], 200);
+        }
+        
         return response()->json(['history' => $history]);
     }
     // GET /api/admin/staff
@@ -66,8 +76,8 @@ class AdminStaffController extends Controller
         }
         // Map exeatRoles to exeat_roles for frontend compatibility
         $staffArr = $staff->toArray();
-        $staffArr['exeat_roles'] = array_map(function($role) {
-            return isset($role['exeat_role']) ? $role['exeat_role'] : null;
+        $staffArr['exeat_roles'] = array_map(function($exeatRole) {
+            return isset($exeatRole['role']) ? $exeatRole['role'] : null;
         }, $staffArr['exeat_roles'] ?? []);
         // Remove nulls
         $staffArr['exeat_roles'] = array_values(array_filter($staffArr['exeat_roles']));

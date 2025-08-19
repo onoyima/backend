@@ -75,11 +75,10 @@ Route::middleware('auth:sanctum')->group(function () {
 
     Route::get('/staff', [AdminStaffController::class, 'index']);
     Route::post('/staff', [AdminStaffController::class, 'store']);
+    Route::get('/staff/assignments', [AdminStaffController::class, 'assignments']);
     Route::get('/staff/{id}', [AdminStaffController::class, 'show']);
     Route::put('/staff/{id}', [AdminStaffController::class, 'update']);
     Route::delete('/staff/{id}', [AdminStaffController::class, 'destroy']);
-
-    Route::get('/staff/assignments', [AdminStaffController::class, 'assignments']);
     Route::post('/staff/{id}/assign-exeat-role', [AdminStaffController::class, 'assignExeatRole']);
     Route::delete('/staff/{id}/unassign-exeat-role', [AdminStaffController::class, 'unassignExeatRole']);
 });
