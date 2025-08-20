@@ -12,7 +12,7 @@ class HostelController extends Controller
     // POST /api/hostel/signout/{exeat_request_id}
     public function signOut(Request $request, $exeat_request_id)
     {
-        $exeat = ExeatRequest::find($exeat_request_id);
+        $exeat = ExeatRequest::with('student:id,fname,lname,passport')->find($exeat_request_id);
         if (!$exeat) {
             return response()->json(['message' => 'Exeat request not found.'], 404);
         }

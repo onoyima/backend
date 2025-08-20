@@ -19,11 +19,16 @@ class SecurityController extends Controller
         // For demo: find by QR or matric
         $exeat = null;
         if (!empty($validated['qr_code'])) {
-            $exeat = ExeatRequest::whereRaw('CONCAT("QR-", id, "-", student_id) = ?', [$validated['qr_code']])->first();
+            $exeat = ExeatRequest::with('student:id,fname,lname,passport')
+                ->whereRaw('CONCAT("QR-", id, "-", student_id) = ?', [$validated['qr_code']])
+                ->first();
         } elseif (!empty($validated['matric_number'])) {
-            $exeat = ExeatRequest::whereHas('student', function($q) use ($validated) {
-                $q->where('matric_number', $validated['matric_number']);
-            })->where('status', 'approved')->first();
+            $exeat = ExeatRequest::with('student:id,fname,lname,passport')
+                ->whereHas('student', function($q) use ($validated) {
+                    $q->where('matric_number', $validated['matric_number']);
+                })
+                ->where('status', 'approved')
+                ->first();
         }
         if (!$exeat) {
             return response()->json(['message' => 'No valid exeat found.'], 404);
@@ -35,7 +40,7 @@ class SecurityController extends Controller
     // POST /api/security/signout/{exeat_request_id}
     public function signOut(Request $request, $exeat_request_id)
     {
-        $exeat = ExeatRequest::find($exeat_request_id);
+        $exeat = ExeatRequest::with('student:id,fname,lname,passport')->find($exeat_request_id);
         if (!$exeat) {
             return response()->json(['message' => 'Exeat request not found.'], 404);
         }

@@ -57,6 +57,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/exeat-requests/{id}/reject', [StaffExeatRequestController::class, 'reject']);
         Route::post('/exeat-requests/{id}/send-parent-consent', [StaffExeatRequestController::class, 'sendParentConsent']);
         Route::get('/exeat-requests/{id}/history', [StaffExeatRequestController::class, 'history']);
+        Route::get('/exeat-requests/role-history', [StaffExeatRequestController::class, 'roleHistory']);
     });
 
     // Parent consent routes

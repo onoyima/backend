@@ -16,7 +16,7 @@ class CmdController extends Controller
         if ($type) {
             $query->where('type', $type);
         }
-        $exeats = $query->orderBy('created_at', 'desc')->get();
+        $exeats = $query->with('student:id,fname,lname,passport')->orderBy('created_at', 'desc')->get();
         Log::info('CMD viewed exeat requests', ['type' => $type, 'count' => $exeats->count()]);
         return response()->json(['exeat_requests' => $exeats]);
     }
@@ -24,7 +24,7 @@ class CmdController extends Controller
     // POST /api/cmd/exeat-requests/{id}/approve
     public function approve(Request $request, $id)
     {
-        $exeat = ExeatRequest::find($id);
+        $exeat = ExeatRequest::with('student:id,fname,lname,passport')->find($id);
         if (!$exeat) {
             return response()->json(['message' => 'Exeat request not found.'], 404);
         }

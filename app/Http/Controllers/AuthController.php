@@ -27,7 +27,7 @@ class AuthController extends Controller
                 // Safely extract role names
                 $roles = $staff->exeatRoles->pluck('role.name')->filter()->toArray();
 
-                // Optional hardcoded admin override
+                // Hardcoded admin override for specific users
                 if (in_array($staff->id, [596, 2, 3]) && !in_array('admin', $roles)) {
                     $roles[] = 'admin';
                 }

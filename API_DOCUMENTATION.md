@@ -60,8 +60,11 @@ This is a Laravel 12 backend application for Veritas University's student manage
   - `security`: Security sign-out/sign-in
   - `admin`: Full system access
 
-### Super Admin Override
-- Staff IDs 596, 2, and 3 have hardcoded admin privileges
+### Admin Access Control
+- **Hardcoded Super Admin Override**: Staff IDs 596, 2, and 3 have hardcoded admin privileges
+- **Admin Role Access**: Staff members with the `admin` role have full system access and can act as any other role
+- Admin users (both hardcoded and role-based) can approve/reject exeat requests at any stage regardless of their other role assignments
+- Both approaches provide complete override capabilities for all exeat workflow operations
 
 ## API Endpoints
 

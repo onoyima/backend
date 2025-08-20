@@ -83,6 +83,74 @@ class ExeatRequest extends Model
     {
         return $this->is_medical && $this->status === 'pending';
     }
+
+    // Method to check if exeat request covers weekdays and send notification
+    public function checkWeekdaysAndNotify(): void
+    {
+        $weekdaysCovered = $this->getWeekdaysCovered();
+        
+        if (!empty($weekdaysCovered)) {
+            $this->sendWeekdayNotification($weekdaysCovered);
+        }
+    }
+
+    // Get weekdays covered by the exeat request
+    public function getWeekdaysCovered(): array
+    {
+        $departureDate = \Carbon\Carbon::parse($this->departure_date);
+        $returnDate = \Carbon\Carbon::parse($this->return_date);
+        $weekdays = [];
+        
+        $currentDate = $departureDate->copy();
+        
+        while ($currentDate->lte($returnDate)) {
+            // Check if current date is a weekday (Monday = 1, Friday = 5)
+            if ($currentDate->dayOfWeek >= 1 && $currentDate->dayOfWeek <= 5) {
+                $weekdays[] = $currentDate->format('Y-m-d (l)');
+            }
+            $currentDate->addDay();
+        }
+        
+        return $weekdays;
+    }
+
+    // Send email notification for weekday absence
+    private function sendWeekdayNotification(array $weekdays): void
+    {
+        try {
+            $student = $this->student;
+            $weekdaysList = implode(', ', $weekdays);
+            
+            $message = "Student Weekday Absence Notification\n\n";
+            $message .= "Student Name: {$student->fname} {$student->lname}\n";
+            $message .= "Matric Number: {$this->matric_no}\n";
+            $message .= "Reason: {$this->reason}\n";
+            $message .= "Destination: {$this->destination}\n";
+            $message .= "Departure Date: {$this->departure_date}\n";
+            $message .= "Return Date: {$this->return_date}\n";
+            $message .= "Weekdays Covered: {$weekdaysList}\n\n";
+            $message .= "This student has applied to be absent during weekdays.\n\n";
+            $message .= "— VERITAS University Exeat Management System";
+            
+            \Mail::raw($message, function ($mail) use ($student) {
+                $mail->to('onoyimab@veritas.edu.ng', 'Academic Administrator')
+                     ->subject("Weekday Absence Alert - {$student->fname} {$student->lname} ({$this->matric_no})");
+            });
+            
+            \Log::info('Weekday absence notification sent', [
+                'exeat_request_id' => $this->id,
+                'student_id' => $this->student_id,
+                'matric_no' => $this->matric_no,
+                'weekdays_count' => count($weekdays)
+            ]);
+            
+        } catch (\Exception $e) {
+            \Log::error('Failed to send weekday absence notification', [
+                'exeat_request_id' => $this->id,
+                'error' => $e->getMessage()
+            ]);
+        }
+    }
 }
 
 // Status enum for clarity:
