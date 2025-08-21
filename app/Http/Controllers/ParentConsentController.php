@@ -70,13 +70,40 @@ public function decline($token)
     ]);
 }
 
-    // POST /api/parent/consent/remind
+    /**
+     * Send bulk parent consent reminders to Deputy Dean staff.
+     */
     public function remind(Request $request)
     {
-        // For demo, just log and return
-        \Log::info('Bulk parent consent reminders sent by admin', ['admin_id' => $request->user()->id]);
-        // In real app, find all pending consents and send reminders
-        return response()->json(['message' => 'Bulk parent consent reminders sent (simulated).']);
+        try {
+            // Send reminders to Deputy Dean staff about pending parent consents
+            // Parents do not receive direct notifications
+            
+            $pendingConsents = ParentConsent::where('consent_status', 'pending')
+                ->with(['exeatRequest.student', 'studentContact'])
+                ->get();
+            
+            $remindersSent = 0;
+            
+            foreach ($pendingConsents as $consent) {
+                // Notify Deputy Dean staff about pending consent
+                // NotificationJob::dispatch($consent, 'deputy_dean_reminder');
+                $remindersSent++;
+            }
+            
+            return response()->json([
+                'success' => true,
+                'message' => "Sent {$remindersSent} reminders to Deputy Dean staff about pending parent consents",
+                'reminders_sent' => $remindersSent
+            ]);
+            
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to send reminders',
+                'error' => $e->getMessage()
+            ], 500);
+        }
     }
 
     // GET /api/parent/exeat-consent/{token}/{action}

@@ -1,0 +1,681 @@
+EXEAT WORKFLOW SYSTEM - COMPLETE FLOW WITH DEPUTY DEAN PARENT CONSENT FEATURE
+================================================================================
+
+This document describes the complete exeat workflow from beginning to end, including the new feature where the Deputy Dean can act as a parent for parent consent after the deputy-dean_review stage.
+
+1. INITIAL EXEAT REQUEST CREATION
+==================================
+
+STEP 1: Student Creates Exeat Request
+- Student logs into the system using their credentials
+- Student navigates to exeat request creation form
+- Student fills out required information:
+  * Reason for exeat
+  * Start date and time
+  * End date and time
+  * Destination
+  * Contact information
+  * Emergency contact details
+  * Category (medical, personal, academic, etc.)
+- System determines if request is medical-related based on category
+- System creates ExeatRequest record with initial status:
+  * Medical requests: status = 'cmd_review'
+  * Non-medical requests: status = 'deputy-dean_review'
+- System creates first ExeatApproval record:
+  * Medical: role = 'medical_officer', status = 'pending'
+  * Non-medical: role = 'deputy_dean', status = 'pending'
+- System sends confirmation email to student
+- Audit log created: action = 'create', details = 'Exeat request created'
+
+2. APPROVAL WORKFLOW STAGES
+===========================
+
+STAGE 1: CMD Review (Medical Requests Only)
+--------------------------------------------
+IF request is medical:
+- Status: 'cmd_review'
+- CMD (Chief Medical Officer) reviews the request
+- CMD can:
+  a) APPROVE: 
+     - ExeatApproval.status = 'approved'
+     - ExeatRequest.status advances to 'deputy-dean_review'
+     - Audit log: action = 'approve', staff_id = CMD's ID
+  b) REJECT:
+     - ExeatApproval.status = 'rejected'
+     - ExeatRequest.status = 'rejected'
+     - Workflow ends
+     - Audit log: action = 'reject', staff_id = CMD's ID
+
+STAGE 2: Deputy Dean Review
+---------------------------
+- Status: 'deputy-dean_review'
+- Deputy Dean reviews the request
+- Deputy Dean can:
+  a) APPROVE:
+     - ExeatApproval.status = 'approved'
+     - ExeatRequest.status advances to 'parent_consent'
+     - System automatically triggers parent consent process
+     - Audit log: action = 'approve', staff_id = Deputy Dean's ID
+  b) REJECT:
+     - ExeatApproval.status = 'rejected'
+     - ExeatRequest.status = 'rejected'
+     - Workflow ends
+     - Audit log: action = 'reject', staff_id = Deputy Dean's ID
+
+STAGE 3: Parent Consent (NEW FEATURE ENHANCED)
+-----------------------------------------------
+- Status: 'parent_consent'
+- System creates ParentConsent record with unique token
+- System sends consent request to parent via:
+  * Email with approval/rejection links
+  * SMS with approval/rejection links
+  * WhatsApp message with approval/rejection links
+- Parent can:
+  a) APPROVE via web link or API:
+     - ParentConsent.consent_status = 'approved'
+     - ExeatRequest.status advances to 'dean_review'
+     - Audit log: action = 'parent_consent_approve', staff_id = null
+  b) REJECT via web link or API:
+     - ParentConsent.consent_status = 'declined'
+     - ExeatRequest.status = 'rejected'
+     - Workflow ends
+     - Audit log: action = 'parent_consent_decline', staff_id = null
+
+**NEW FEATURE: Deputy Dean Acting as Parent**
+
+If parent doesn't respond within reasonable time, Deputy Dean can act on behalf of parent:
+
+Deputy Dean Parent Consent Actions:
+- Deputy Dean can access parent consent interface
+- Deputy Dean can perform same actions as parent:
+  a) APPROVE on behalf of parent:
+     - ParentConsent.consent_status = 'approved'
+     - ParentConsent.acted_by_staff_id = Deputy Dean's ID (new field)
+     - ExeatRequest.status advances to 'dean_review'
+     - Audit log: action = 'deputy_dean_parent_consent_approve', 
+       staff_id = Deputy Dean's ID, 
+       details = 'Deputy Dean approved on behalf of parent'
+  b) REJECT on behalf of parent:
+     - ParentConsent.consent_status = 'declined'
+     - ParentConsent.acted_by_staff_id = Deputy Dean's ID (new field)
+     - ExeatRequest.status = 'rejected'
+     - Workflow ends
+     - Audit log: action = 'deputy_dean_parent_consent_reject', 
+       staff_id = Deputy Dean's ID, 
+       details = 'Deputy Dean rejected on behalf of parent'
+
+Implementation Requirements for New Feature:
+1. Add 'acted_by_staff_id' field to ParentConsent model
+2. Add new endpoints in StaffExeatRequestController:
+   - POST /api/staff/exeat-requests/{id}/parent-consent/approve
+   - POST /api/staff/exeat-requests/{id}/parent-consent/reject
+3. Add permission checks to ensure only Deputy Dean can act as parent
+4. Update ExeatWorkflowService with new methods:
+   - deputyDeanParentConsentApprove()
+   - deputyDeanParentConsentReject()
+5. Enhanced audit logging to distinguish between parent and deputy dean actions
+
+STAGE 4: Dean Review
+--------------------
+- Status: 'dean_review'
+- Dean reviews the approved request
+- Dean can:
+  a) APPROVE:
+     - ExeatApproval.status = 'approved'
+     - ExeatRequest.status advances to 'hostel_signout'
+     - Audit log: action = 'approve', staff_id = Dean's ID
+  b) REJECT:
+     - ExeatApproval.status = 'rejected'
+     - ExeatRequest.status = 'rejected'
+     - Workflow ends
+     - Audit log: action = 'reject', staff_id = Dean's ID
+
+3. PHYSICAL SIGNOUT PROCESS
+===========================
+
+STAGE 5: Hostel Signout
+------------------------
+- Status: 'hostel_signout'
+- Student physically reports to hostel administrator
+- Hostel admin verifies student identity and approved exeat
+- Hostel admin records signout:
+  - ExeatRequest.status advances to 'security_signout'
+  - Timestamp recorded
+  - Audit log: action = 'hostel_signout', staff_id = Hostel Admin's ID
+
+STAGE 6: Security Signout
+--------------------------
+- Status: 'security_signout'
+- Student reports to security gate
+- Security officer verifies:
+  * Student identity
+  * Approved exeat status
+  * Hostel signout completion
+- Security officer records exit:
+  - ExeatRequest.status advances to 'security_signin'
+  - Exit timestamp recorded
+  - Audit log: action = 'security_signout', staff_id = Security Officer's ID
+- Student is now officially off campus
+
+4. RETURN PROCESS
+=================
+
+STAGE 7: Security Signin
+-------------------------
+- Status: 'security_signin' (waiting for return)
+- Student returns to campus before expiry time
+- Security officer verifies student identity
+- Security officer records return:
+  - ExeatRequest.status advances to 'hostel_signin'
+  - Return timestamp recorded
+  - Audit log: action = 'security_signin', staff_id = Security Officer's ID
+
+STAGE 8: Hostel Signin
+-----------------------
+- Status: 'hostel_signin'
+- Student reports back to hostel
+- Hostel admin verifies return and student condition
+- Hostel admin completes signin:
+  - ExeatRequest.status advances to 'completed'
+  - Final timestamp recorded
+  - Audit log: action = 'hostel_signin', staff_id = Hostel Admin's ID
+
+STAGE 9: Completion
+-------------------
+- Status: 'completed'
+- Exeat workflow is fully completed
+- All timestamps and audit logs preserved for record keeping
+- Student receives completion notification
+
+5. AUDIT TRAIL AND TRACKING
+============================
+
+Every action in the workflow creates an audit log entry with:
+- staff_id: ID of staff member performing action (null for parent actions)
+- student_id: ID of student whose exeat is being processed
+- action: Type of action performed
+- target_type: 'exeat_request'
+- target_id: ExeatRequest ID
+- details: Descriptive text of what happened
+- timestamp: When the action occurred
+
+For the new Deputy Dean parent consent feature:
+- Clear distinction in audit logs between parent and deputy dean actions
+- Staff ID recorded when deputy dean acts on behalf of parent
+- Details field specifies "Deputy Dean approved/rejected on behalf of parent"
+- ParentConsent record includes acted_by_staff_id to track who performed the action
+
+6. ROLE-BASED PERMISSIONS
+=========================
+
+Each role has specific permissions:
+- CMD: Can approve/reject at 'cmd_review' stage
+- Deputy Dean: Can approve/reject at 'deputy-dean_review' stage AND act as parent at 'parent_consent' stage
+- Dean: Can approve/reject at 'dean_review' stage
+- Hostel Admin: Can signout/signin at hostel stages
+- Security Officer: Can signout/signin at security stages
+- Admin: Can view all requests and act on behalf of any role
+- Parent: Can approve/reject consent requests via token-based links
+
+7. COMPREHENSIVE NOTIFICATION SYSTEM
+====================================
+
+The notification system provides real-time updates to all stakeholders at every stage of the exeat workflow. This includes in-app notifications, email alerts, and SMS/WhatsApp messages.
+
+7.1 NOTIFICATION TYPES
+----------------------
+
+A. Real-time In-App Notifications
+- Displayed in web application notification panel
+- Persistent until marked as read
+- Role-based filtering and categorization
+- Timestamp and action details included
+
+B. Email Notifications
+- Sent to user's registered email address
+- HTML formatted with exeat details
+- Direct action links where applicable
+
+C. SMS/WhatsApp Notifications
+- Critical status changes only
+- Concise message format
+- Emergency contact integration
+
+7.2 NOTIFICATION TRIGGERS BY STAGE
+----------------------------------
+
+STAGE 1: Exeat Request Creation
+Notifications Sent:
+- Student: "Exeat request submitted successfully" (In-app + Email)
+- Admin: "New exeat request created by [Student Name]" (In-app)
+- Dean: "New exeat request requires workflow monitoring" (In-app)
+- Assigned Role (CMD/Deputy Dean): "New exeat request pending your review" (In-app + Email)
+
+STAGE 2: CMD Review (Medical Requests)
+Notifications Sent:
+- CMD: "Medical exeat request pending your approval" (In-app + Email)
+- Student: "Your exeat request is under CMD review" (In-app)
+- Admin: "Exeat request at CMD review stage" (In-app)
+- Dean: "Medical exeat in CMD review process" (In-app)
+
+On CMD Approval:
+- Student: "CMD approved your exeat request" (In-app + Email)
+- Deputy Dean: "Exeat request forwarded for your review" (In-app + Email)
+- Admin: "Exeat advanced from CMD to Deputy Dean review" (In-app)
+- Dean: "Exeat progressing through approval workflow" (In-app)
+
+On CMD Rejection:
+- Student: "Your exeat request was rejected by CMD" (In-app + Email + SMS)
+- Admin: "Exeat request rejected at CMD stage" (In-app)
+- Dean: "Medical exeat rejected by CMD" (In-app)
+
+STAGE 3: Deputy Dean Review
+Notifications Sent:
+- Deputy Dean: "Exeat request pending your approval" (In-app + Email)
+- Student: "Your exeat request is under Deputy Dean review" (In-app)
+- Admin: "Exeat request at Deputy Dean review stage" (In-app)
+- Dean: "Exeat in Deputy Dean review process" (In-app)
+
+On Deputy Dean Approval:
+- Student: "Deputy Dean approved your exeat request" (In-app + Email)
+- Parent: "Parent consent required for exeat request" (Email + SMS + WhatsApp)
+- Admin: "Exeat advanced to parent consent stage" (In-app)
+- Dean: "Exeat awaiting parent consent" (In-app)
+- Deputy Dean: "Exeat forwarded to parent consent" (In-app)
+
+On Deputy Dean Rejection:
+- Student: "Your exeat request was rejected by Deputy Dean" (In-app + Email + SMS)
+- Admin: "Exeat request rejected at Deputy Dean stage" (In-app)
+- Dean: "Exeat rejected by Deputy Dean" (In-app)
+
+STAGE 4: Parent Consent
+Notifications Sent:
+- Parent: "Consent required for [Student Name]'s exeat request" (Email + SMS + WhatsApp)
+- Student: "Parent consent request sent" (In-app)
+- Deputy Dean: "Parent consent pending - you can act if needed" (In-app)
+- Admin: "Exeat awaiting parent consent" (In-app)
+- Dean: "Exeat in parent consent stage" (In-app)
+
+Parent Consent Reminders (if no response after 24 hours):
+- Parent: "Reminder: Consent needed for exeat request" (Email + SMS)
+- Deputy Dean: "Parent consent overdue - action may be required" (In-app + Email)
+- Admin: "Parent consent overdue for exeat request" (In-app)
+
+On Parent Approval:
+- Student: "Parent approved your exeat request" (In-app + Email)
+- Dean: "Exeat request forwarded for your final approval" (In-app + Email)
+- Admin: "Exeat advanced to Dean review stage" (In-app)
+- Deputy Dean: "Exeat progressing to Dean review" (In-app)
+
+On Parent Rejection:
+- Student: "Your exeat request was declined by parent" (In-app + Email + SMS)
+- Admin: "Exeat request declined by parent" (In-app)
+- Dean: "Exeat declined at parent consent stage" (In-app)
+- Deputy Dean: "Exeat declined by parent" (In-app)
+
+On Deputy Dean Acting as Parent (Approval):
+- Student: "Deputy Dean approved exeat on behalf of parent" (In-app + Email)
+- Dean: "Exeat request forwarded for your final approval" (In-app + Email)
+- Admin: "Deputy Dean acted as parent - exeat approved" (In-app)
+- Parent: "Deputy Dean approved exeat on your behalf" (Email + SMS)
+
+On Deputy Dean Acting as Parent (Rejection):
+- Student: "Deputy Dean declined exeat on behalf of parent" (In-app + Email + SMS)
+- Admin: "Deputy Dean acted as parent - exeat declined" (In-app)
+- Dean: "Exeat declined by Deputy Dean acting as parent" (In-app)
+- Parent: "Deputy Dean declined exeat on your behalf" (Email + SMS)
+
+STAGE 5: Dean Review
+Notifications Sent:
+- Dean: "Exeat request pending your final approval" (In-app + Email)
+- Student: "Your exeat request is under Dean review" (In-app)
+- Admin: "Exeat request at Dean review stage" (In-app)
+
+On Dean Approval:
+- Student: "Dean approved your exeat request - proceed to hostel signout" (In-app + Email + SMS)
+- Hostel Admin: "Student approved for exeat signout" (In-app + Email)
+- Admin: "Exeat approved - moved to signout process" (In-app)
+- Security: "Approved exeat - student will sign out" (In-app)
+
+On Dean Rejection:
+- Student: "Your exeat request was rejected by Dean" (In-app + Email + SMS)
+- Admin: "Exeat request rejected at Dean stage" (In-app)
+
+STAGE 6: Hostel Signout
+Notifications Sent:
+- Student: "Report to hostel for signout" (In-app + SMS)
+- Hostel Admin: "Student ready for hostel signout" (In-app)
+- Security: "Student will proceed to security gate after hostel signout" (In-app)
+- Admin: "Exeat at hostel signout stage" (In-app)
+
+On Hostel Signout Completion:
+- Student: "Hostel signout completed - proceed to security gate" (In-app + SMS)
+- Security: "Student ready for security signout" (In-app + Email)
+- Admin: "Hostel signout completed" (In-app)
+- Dean: "Student signed out from hostel" (In-app)
+
+STAGE 7: Security Signout
+Notifications Sent:
+- Security: "Student ready for final signout" (In-app)
+- Student: "Report to security gate for final signout" (In-app + SMS)
+- Admin: "Exeat at security signout stage" (In-app)
+
+On Security Signout Completion:
+- Student: "You have successfully signed out - enjoy your exeat" (In-app + SMS)
+- Admin: "Student successfully signed out" (In-app)
+- Dean: "Student officially off campus" (In-app)
+- Parent: "[Student Name] has left campus safely" (SMS)
+
+STAGE 8: Security Signin (Return)
+Notifications Sent:
+- Student: "Welcome back - report to hostel for signin" (In-app + SMS)
+- Hostel Admin: "Student returned - ready for hostel signin" (In-app)
+- Security: "Student return recorded" (In-app)
+- Admin: "Student returned to campus" (In-app)
+- Dean: "Student back on campus" (In-app)
+- Parent: "[Student Name] has returned to campus safely" (SMS)
+
+STAGE 9: Hostel Signin (Final)
+Notifications Sent:
+- Student: "Exeat completed successfully - welcome back" (In-app + Email)
+- Admin: "Exeat workflow completed" (In-app)
+- Dean: "Student exeat completed successfully" (In-app)
+- Parent: "[Student Name]'s exeat completed successfully" (Email)
+
+7.3 NOTIFICATION DASHBOARD FEATURES
+-----------------------------------
+
+Student Notification Dashboard:
+- Filter by exeat request ID
+- View all notifications for specific exeat
+- Mark notifications as read/unread
+- Export notification history
+- Real-time updates
+- Mobile-responsive design
+
+Staff Notification Dashboard:
+- Role-based notification filtering
+- Bulk mark as read functionality
+- Priority notification highlighting
+- Search and filter by student/date/stage
+- Action buttons for pending approvals
+- Notification statistics and analytics
+
+Admin Notification Dashboard:
+- System-wide notification overview
+- All exeat workflow monitoring
+- Staff performance tracking
+- Notification delivery status
+- Failed notification alerts
+- Bulk notification management
+
+Dean Notification Dashboard:
+- All exeat workflow visibility
+- Priority notifications for urgent requests
+- Workflow bottleneck alerts
+- Student safety notifications
+- Statistical summaries
+- Override action capabilities
+
+7.4 NOTIFICATION PREFERENCES
+----------------------------
+
+Users can customize notification preferences:
+- Enable/disable specific notification types
+- Choose delivery methods (in-app, email, SMS)
+- Set quiet hours for non-urgent notifications
+- Configure notification frequency
+- Emergency notification overrides
+
+7.5 NOTIFICATION AUDIT TRAIL
+----------------------------
+
+All notifications are logged with:
+- Recipient information
+- Notification type and content
+- Delivery method and status
+- Timestamp of sending and reading
+- Related exeat request ID
+- Triggering action and staff member
+
+7.6 EMERGENCY NOTIFICATION PROTOCOLS
+------------------------------------
+
+For urgent situations:
+- Immediate SMS/WhatsApp to all relevant parties
+- Escalation to higher authorities if no response
+- Parent emergency contact activation
+- Security alert integration
+- Real-time location tracking requests
+
+8. ERROR HANDLING AND EDGE CASES
+=================================
+
+- Expired parent consent tokens
+- Duplicate approvals prevention
+- Invalid status transitions
+- Missing required approvals
+- Student not returning on time
+- System failures during critical stages
+- Role permission violations
+- Concurrent modification handling
+
+9. NOTIFICATION SYSTEM IMPLEMENTATION
+=====================================
+
+9.1 DATABASE SCHEMA ENHANCEMENTS
+--------------------------------
+
+New Notification Tables:
+
+A. exeat_notifications table:
+- id (primary key)
+- exeat_request_id (foreign key)
+- recipient_type (enum: 'student', 'staff', 'admin')
+- recipient_id (polymorphic - student_id or staff_id)
+- notification_type (enum: 'stage_change', 'approval_required', 'reminder', 'emergency')
+- title (varchar 255)
+- message (text)
+- delivery_methods (JSON: ['in_app', 'email', 'sms', 'whatsapp'])
+- delivery_status (JSON: delivery status for each method)
+- priority (enum: 'low', 'medium', 'high', 'urgent')
+- is_read (boolean, default false)
+- read_at (timestamp, nullable)
+- created_at (timestamp)
+- updated_at (timestamp)
+
+B. notification_preferences table:
+- id (primary key)
+- user_type (enum: 'student', 'staff')
+- user_id (polymorphic)
+- notification_type (varchar)
+- in_app_enabled (boolean, default true)
+- email_enabled (boolean, default true)
+- sms_enabled (boolean, default false)
+- whatsapp_enabled (boolean, default false)
+- quiet_hours_start (time, nullable)
+- quiet_hours_end (time, nullable)
+- created_at (timestamp)
+- updated_at (timestamp)
+
+C. notification_delivery_logs table:
+- id (primary key)
+- notification_id (foreign key)
+- delivery_method (enum: 'in_app', 'email', 'sms', 'whatsapp')
+- delivery_status (enum: 'pending', 'sent', 'delivered', 'failed', 'read')
+- delivery_provider (varchar: 'twilio', 'mailgun', etc.)
+- provider_message_id (varchar, nullable)
+- error_message (text, nullable)
+- attempted_at (timestamp)
+- delivered_at (timestamp, nullable)
+- created_at (timestamp)
+
+9.2 API ENDPOINTS FOR NOTIFICATIONS
+-----------------------------------
+
+Student Notification Endpoints:
+- GET /api/student/notifications - List all notifications
+- GET /api/student/notifications/unread - Get unread notifications count
+- POST /api/student/notifications/{id}/mark-read - Mark notification as read
+- POST /api/student/notifications/mark-all-read - Mark all as read
+- GET /api/student/notifications/exeat/{exeat_id} - Get notifications for specific exeat
+- PUT /api/student/notification-preferences - Update notification preferences
+- GET /api/student/notification-preferences - Get current preferences
+
+Staff Notification Endpoints:
+- GET /api/staff/notifications - List role-based notifications
+- GET /api/staff/notifications/pending-actions - Get notifications requiring action
+- POST /api/staff/notifications/{id}/mark-read - Mark notification as read
+- POST /api/staff/notifications/bulk-mark-read - Bulk mark as read
+- GET /api/staff/notifications/statistics - Get notification statistics
+- PUT /api/staff/notification-preferences - Update notification preferences
+
+Admin Notification Endpoints:
+- GET /api/admin/notifications/system-overview - System-wide notification overview
+- GET /api/admin/notifications/delivery-status - Notification delivery statistics
+- GET /api/admin/notifications/failed - Failed notification alerts
+- POST /api/admin/notifications/resend/{id} - Resend failed notification
+- GET /api/admin/notifications/audit - Notification audit trail
+
+Dean Notification Endpoints:
+- GET /api/dean/notifications/workflow-overview - All exeat workflow notifications
+- GET /api/dean/notifications/urgent - Priority and urgent notifications
+- GET /api/dean/notifications/bottlenecks - Workflow bottleneck alerts
+- POST /api/dean/notifications/broadcast - Send broadcast notification
+
+9.3 NOTIFICATION SERVICE CLASSES
+--------------------------------
+
+A. ExeatNotificationService:
+- createNotification($exeatRequest, $recipients, $type, $message)
+- sendStageChangeNotification($exeatRequest, $oldStatus, $newStatus)
+- sendApprovalRequiredNotification($exeatRequest, $role)
+- sendReminderNotification($exeatRequest, $type)
+- sendEmergencyNotification($exeatRequest, $message)
+
+B. NotificationDeliveryService:
+- deliverInAppNotification($notification)
+- deliverEmailNotification($notification)
+- deliverSMSNotification($notification)
+- deliverWhatsAppNotification($notification)
+- retryFailedDelivery($notificationId)
+
+C. NotificationPreferenceService:
+- getUserPreferences($userType, $userId)
+- updatePreferences($userType, $userId, $preferences)
+- checkQuietHours($userId, $userType)
+- getDeliveryMethods($userId, $userType, $notificationType)
+
+9.4 REAL-TIME NOTIFICATION IMPLEMENTATION
+-----------------------------------------
+
+Using Laravel Broadcasting and WebSockets:
+
+A. Broadcast Events:
+- ExeatNotificationEvent - Triggered when new notification created
+- NotificationReadEvent - Triggered when notification marked as read
+- UrgentNotificationEvent - For emergency notifications
+
+B. WebSocket Channels:
+- student.{student_id} - Private channel for student notifications
+- staff.{staff_id} - Private channel for staff notifications
+- admin.notifications - Admin notification channel
+- dean.notifications - Dean notification channel
+
+C. Frontend Integration:
+- Real-time notification popup
+- Notification badge with unread count
+- Auto-refresh notification list
+- Sound alerts for urgent notifications
+
+9.5 NOTIFICATION DASHBOARD COMPONENTS
+------------------------------------
+
+A. Student Dashboard Features:
+- Notification timeline view
+- Filter by exeat request
+- Search functionality
+- Export to PDF/Excel
+- Mobile-responsive design
+- Push notification support
+
+B. Staff Dashboard Features:
+- Role-based filtering
+- Action buttons for pending approvals
+- Bulk operations
+- Priority highlighting
+- Performance analytics
+- Quick action shortcuts
+
+C. Admin Dashboard Features:
+- System health monitoring
+- Delivery rate analytics
+- Failed notification management
+- User engagement metrics
+- Notification template management
+- Bulk notification tools
+
+9.6 NOTIFICATION TEMPLATES
+--------------------------
+
+Template Categories:
+- Stage change notifications
+- Approval required notifications
+- Reminder notifications
+- Emergency notifications
+- Completion notifications
+
+Template Variables:
+- {student_name}
+- {exeat_id}
+- {current_stage}
+- {action_required}
+- {deadline}
+- {staff_name}
+- {timestamp}
+
+9.7 PERFORMANCE OPTIMIZATION
+----------------------------
+
+- Queue-based notification delivery
+- Batch processing for bulk notifications
+- Caching for notification preferences
+- Database indexing for fast queries
+- Rate limiting for SMS/WhatsApp
+- Retry mechanisms for failed deliveries
+
+10. SUMMARY OF NEW DEPUTY DEAN PARENT CONSENT FEATURE
+=====================================================
+
+The new feature allows the Deputy Dean to act as a parent during the parent_consent stage:
+
+1. After deputy-dean_review stage, request moves to parent_consent
+2. Parent receives consent request via email/SMS/WhatsApp
+3. If parent doesn't respond, Deputy Dean can access parent consent interface
+4. Deputy Dean can approve or reject on behalf of parent
+5. Action is clearly recorded in audit trail with Deputy Dean's staff ID
+6. ParentConsent record tracks who performed the action (parent or deputy dean)
+7. Workflow continues normally to dean_review stage
+8. All existing parent consent functionality remains unchanged
+9. Clear audit trail distinguishes between parent and deputy dean actions
+10. Permission system ensures only Deputy Dean can act as parent
+
+This feature provides a fallback mechanism when parents are unresponsive while maintaining full accountability through comprehensive audit logging.
+
+11. COMPREHENSIVE NOTIFICATION SYSTEM SUMMARY
+=============================================
+
+The enhanced notification system provides:
+
+1. **Complete Stage Coverage**: Notifications at every workflow stage
+2. **Multi-Channel Delivery**: In-app, email, SMS, and WhatsApp notifications
+3. **Role-Based Targeting**: Specific notifications for each user role
+4. **Real-Time Updates**: WebSocket-based real-time notifications
+5. **Customizable Preferences**: User-controlled notification settings
+6. **Comprehensive Dashboards**: Dedicated notification interfaces for all user types
+7. **Audit Trail**: Complete logging of all notification activities
+8. **Emergency Protocols**: Special handling for urgent situations
+9. **Performance Optimization**: Queue-based delivery and caching
+10. **Mobile Support**: Responsive design and push notifications
+
+This system ensures all stakeholders are informed at every stage of the exeat workflow, enabling efficient communication and timely decision-making while maintaining complete accountability and user control over notification preferences.

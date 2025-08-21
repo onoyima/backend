@@ -257,7 +257,81 @@ class ExeatWorkflowService
         return $exeatRequest;
     }
 
-    protected function createAuditLog(ExeatRequest $exeatRequest, ?int $staffId, ?int $studentId, string $action, string $details, ?string $comment = null)
+    /**
+     * Deputy Dean approves parent consent on behalf of parent.
+     */
+    public function deputyDeanParentConsentApprove(ParentConsent $parentConsent, int $deputyDeanId, string $reason)
+    {
+        $parentConsent->consent_status = 'approved';
+        $parentConsent->consent_timestamp = now();
+        $parentConsent->acted_by_staff_id = $deputyDeanId;
+        $parentConsent->action_type = 'deputy_dean_approval';
+        $parentConsent->deputy_dean_reason = $reason;
+        $parentConsent->save();
+
+        $exeatRequest = $parentConsent->exeatRequest;
+        $oldStatus = $exeatRequest->status;
+        $exeatRequest->status = 'dean_review';
+        $exeatRequest->save();
+        $this->notifyStudentStatusChange($exeatRequest);
+
+        $this->createAuditLog(
+            $exeatRequest,
+            $deputyDeanId,
+            $exeatRequest->student_id,
+            'deputy_dean_parent_consent_approve',
+            "Status changed from {$oldStatus} to dean_review",
+            "Deputy Dean approved on behalf of parent. Reason: {$reason}"
+        );
+
+        Log::info('WorkflowService: Deputy Dean approved parent consent', [
+            'exeat_id' => $exeatRequest->id,
+            'parent_consent_id' => $parentConsent->id,
+            'deputy_dean_id' => $deputyDeanId,
+            'reason' => $reason
+        ]);
+
+        return $exeatRequest;
+    }
+
+    /**
+     * Deputy Dean rejects parent consent on behalf of parent.
+     */
+    public function deputyDeanParentConsentReject(ParentConsent $parentConsent, int $deputyDeanId, string $reason)
+    {
+        $parentConsent->consent_status = 'declined';
+        $parentConsent->consent_timestamp = now();
+        $parentConsent->acted_by_staff_id = $deputyDeanId;
+        $parentConsent->action_type = 'deputy_dean_rejection';
+        $parentConsent->deputy_dean_reason = $reason;
+        $parentConsent->save();
+
+        $exeatRequest = $parentConsent->exeatRequest;
+        $oldStatus = $exeatRequest->status;
+        $exeatRequest->status = 'rejected';
+        $exeatRequest->save();
+        $this->notifyStudentStatusChange($exeatRequest);
+
+        $this->createAuditLog(
+            $exeatRequest,
+            $deputyDeanId,
+            $exeatRequest->student_id,
+            'deputy_dean_parent_consent_reject',
+            "Status changed from {$oldStatus} to rejected",
+            "Deputy Dean rejected on behalf of parent. Reason: {$reason}"
+        );
+
+        Log::info('WorkflowService: Deputy Dean rejected parent consent', [
+            'exeat_id' => $exeatRequest->id,
+            'parent_consent_id' => $parentConsent->id,
+            'deputy_dean_id' => $deputyDeanId,
+            'reason' => $reason
+        ]);
+
+        return $exeatRequest;
+    }
+
+    public function createAuditLog(ExeatRequest $exeatRequest, ?int $staffId, ?int $studentId, string $action, string $details, ?string $comment = null)
     {
         $logDetails = $details;
         if ($comment) {

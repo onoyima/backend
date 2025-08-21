@@ -15,6 +15,14 @@ use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\CommunicationController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\ChatController;
+use App\Http\Controllers\CommunicationMessageController;
+use App\Http\Controllers\CommunicationApprovalController;
+use App\Http\Controllers\CommunicationAnalyticsController;
+use App\Http\Controllers\StudentNotificationController;
+use App\Http\Controllers\StaffNotificationController;
+use App\Http\Controllers\AdminNotificationController;
+use App\Http\Controllers\DeanNotificationController;
+use App\Http\Controllers\DeanController;
 
 /*
 |--------------------------------------------------------------------------
@@ -46,6 +54,20 @@ Route::middleware('auth:sanctum')->group(function () {
       // ✅ ADD THESE TWO ROUTES:
         Route::get('/exeat-categories', [StudentExeatRequestController::class, 'categories']);
         Route::get('/profile', [StudentExeatRequestController::class, 'profile']);
+        
+        // Student notification routes
+        Route::prefix('notifications')->group(function () {
+            Route::get('/', [StudentNotificationController::class, 'index']);
+            Route::get('/unread-count', [StudentNotificationController::class, 'getUnreadCount']);
+            Route::post('/{id}/mark-read', [StudentNotificationController::class, 'markAsRead']);
+            Route::get('/preferences', [StudentNotificationController::class, 'getPreferences']);
+            Route::put('/preferences', [StudentNotificationController::class, 'updatePreferences']);
+            Route::post('/preferences/reset', [StudentNotificationController::class, 'resetPreferences']);
+            Route::get('/{id}', [StudentNotificationController::class, 'show']);
+            Route::get('/exeat/{exeatId}', [StudentNotificationController::class, 'getExeatNotifications']);
+            Route::get('/statistics/overview', [StudentNotificationController::class, 'getStatistics']);
+            Route::post('/test', [StudentNotificationController::class, 'testNotification']);
+        });
     });
 
     // Staff routes
@@ -58,6 +80,22 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/exeat-requests/{id}/send-parent-consent', [StaffExeatRequestController::class, 'sendParentConsent']);
         Route::get('/exeat-requests/{id}/history', [StaffExeatRequestController::class, 'history']);
         Route::get('/exeat-requests/role-history', [StaffExeatRequestController::class, 'roleHistory']);
+        
+        // Staff notification routes
+        Route::prefix('notifications')->group(function () {
+            Route::get('/', [StaffNotificationController::class, 'index']);
+            Route::get('/unread-count', [StaffNotificationController::class, 'getUnreadCount']);
+            Route::post('/{id}/mark-read', [StaffNotificationController::class, 'markAsRead']);
+            Route::get('/preferences', [StaffNotificationController::class, 'getPreferences']);
+            Route::put('/preferences', [StaffNotificationController::class, 'updatePreferences']);
+            Route::get('/pending-approvals', [StaffNotificationController::class, 'getPendingApprovals']);
+            Route::post('/send-to-student', [StaffNotificationController::class, 'sendNotificationToStudent']);
+            Route::post('/send-reminder', [StaffNotificationController::class, 'sendReminderNotification']);
+            Route::post('/send-emergency', [StaffNotificationController::class, 'sendEmergencyNotification']);
+            Route::get('/statistics/overview', [StaffNotificationController::class, 'getStatistics']);
+            Route::get('/{id}', [StaffNotificationController::class, 'show']);
+            Route::get('/exeat/{exeatId}', [StaffNotificationController::class, 'getExeatNotifications']);
+        });
     });
 
     // Parent consent routes
@@ -82,12 +120,51 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/staff/{id}', [AdminStaffController::class, 'destroy']);
     Route::post('/staff/{id}/assign-exeat-role', [AdminStaffController::class, 'assignExeatRole']);
     Route::delete('/staff/{id}/unassign-exeat-role', [AdminStaffController::class, 'unassignExeatRole']);
+    
+    // Admin notification routes
+    Route::prefix('notifications')->group(function () {
+        Route::get('/', [AdminNotificationController::class, 'index']);
+        Route::get('/statistics', [AdminNotificationController::class, 'getStatistics']);
+        Route::post('/bulk-send', [AdminNotificationController::class, 'bulkSendNotifications']);
+        Route::get('/delivery-logs', [AdminNotificationController::class, 'getDeliveryLogs']);
+        Route::post('/retry-failed', [AdminNotificationController::class, 'retryFailedDeliveries']);
+        Route::get('/user-preferences/{userId}', [AdminNotificationController::class, 'getUserPreferences']);
+        Route::put('/user-preferences/{userId}', [AdminNotificationController::class, 'updateUserPreferences']);
+        Route::get('/preferences-statistics', [AdminNotificationController::class, 'getPreferencesStatistics']);
+        Route::post('/clear-preferences-cache', [AdminNotificationController::class, 'clearPreferencesCache']);
+        Route::get('/templates', [AdminNotificationController::class, 'getNotificationTemplates']);
+    });
 });
 
     // Dean routes
     Route::middleware('role:dean')->group(function () {
         Route::get('/dean/dashboard', [StaffExeatRequestController::class, 'deanDashboard']);
         Route::get('/dean/exeat-requests', [StaffExeatRequestController::class, 'deanRequests']);
+        
+        // Dean notification routes
+        Route::prefix('dean/notifications')->group(function () {
+            Route::get('/', [DeanNotificationController::class, 'index']);
+            Route::get('/unread-count', [DeanNotificationController::class, 'getUnreadCount']);
+            Route::post('/{id}/mark-read', [DeanNotificationController::class, 'markAsRead']);
+            Route::post('/mark-all-read', [DeanNotificationController::class, 'markAllAsRead']);
+            Route::get('/preferences', [DeanNotificationController::class, 'getPreferences']);
+            Route::put('/preferences', [DeanNotificationController::class, 'updatePreferences']);
+            Route::get('/pending-approvals', [DeanNotificationController::class, 'getPendingApprovals']);
+            Route::post('/send-to-students', [DeanNotificationController::class, 'sendNotificationToStudents']);
+            Route::post('/send-reminder', [DeanNotificationController::class, 'sendReminderNotification']);
+            Route::post('/send-emergency', [DeanNotificationController::class, 'sendEmergencyNotification']);
+            Route::get('/statistics/overview', [DeanNotificationController::class, 'getStatistics']);
+            Route::get('/{id}', [DeanNotificationController::class, 'show']);
+            Route::get('/exeat/{exeatId}', [DeanNotificationController::class, 'getExeatNotifications']);
+        });
+        
+        // Deputy Dean parent consent routes
+        Route::prefix('staff/parent-consents')->group(function () {
+            Route::get('/pending', [StaffExeatRequestController::class, 'getPendingParentConsents']);
+            Route::post('/{consentId}/approve', [StaffExeatRequestController::class, 'approveParentConsent']);
+            Route::post('/{consentId}/reject', [StaffExeatRequestController::class, 'rejectParentConsent']);
+            Route::get('/statistics', [StaffExeatRequestController::class, 'getParentConsentStats']);
+        });
     });
 
     // CMD routes
@@ -132,5 +209,37 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/chats', [ChatController::class, 'store']);
     Route::get('/chats/{id}', [ChatController::class, 'show']);
     Route::post('/chats/{id}/messages', [ChatController::class, 'sendMessage']);
+
+    // Communication Portal routes
+    Route::prefix('communication')->group(function () {
+        // Message management routes
+        Route::get('/messages', [CommunicationMessageController::class, 'index']);
+        Route::post('/messages', [CommunicationMessageController::class, 'store']);
+        Route::get('/messages/{id}', [CommunicationMessageController::class, 'show']);
+        Route::put('/messages/{id}', [CommunicationMessageController::class, 'update']);
+        Route::delete('/messages/{id}', [CommunicationMessageController::class, 'destroy']);
+        Route::post('/messages/{id}/send', [CommunicationMessageController::class, 'send']);
+        Route::get('/messages/{id}/statistics', [CommunicationMessageController::class, 'statistics']);
+
+        // Approval workflow routes
+        Route::prefix('approvals')->group(function () {
+            Route::get('/pending', [CommunicationApprovalController::class, 'pendingApprovals']);
+            Route::get('/history', [CommunicationApprovalController::class, 'approvalHistory']);
+            Route::get('/{id}', [CommunicationApprovalController::class, 'show']);
+            Route::post('/{id}/approve', [CommunicationApprovalController::class, 'approve']);
+            Route::post('/{id}/reject', [CommunicationApprovalController::class, 'reject']);
+            Route::post('/bulk-approve', [CommunicationApprovalController::class, 'bulkApprove']);
+            Route::get('/statistics/overview', [CommunicationApprovalController::class, 'statistics']);
+        });
+
+        // Analytics routes (admin only)
+        Route::middleware('role:admin')->prefix('analytics')->group(function () {
+            Route::get('/dashboard', [CommunicationAnalyticsController::class, 'dashboard']);
+            Route::get('/messages', [CommunicationAnalyticsController::class, 'messageAnalytics']);
+            Route::get('/channels', [CommunicationAnalyticsController::class, 'channelAnalytics']);
+            Route::get('/delivery', [CommunicationAnalyticsController::class, 'deliveryAnalytics']);
+            Route::get('/export', [CommunicationAnalyticsController::class, 'export']);
+        });
+    });
 });
 
