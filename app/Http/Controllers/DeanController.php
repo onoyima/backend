@@ -12,7 +12,10 @@ class DeanController extends Controller
     public function index(Request $request)
     {
         // For demo: return all approved/verified exeat requests
-        $exeats = ExeatRequest::where('status', 'approved')->orderBy('created_at', 'desc')->get();
+        $exeats = ExeatRequest::where('status', 'approved')
+            ->with('student:id,fname,lname,passport')
+            ->orderBy('created_at', 'desc')
+            ->get();
         Log::info('Dean viewed all approved exeat requests', ['count' => $exeats->count()]);
         return response()->json(['exeat_requests' => $exeats]);
     }

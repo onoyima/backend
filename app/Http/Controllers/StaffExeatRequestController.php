@@ -15,23 +15,27 @@ class StaffExeatRequestController extends Controller
 {
     private function getAllowedStatuses(array $roleNames)
     {
+        // Define all possible statuses in the exeat workflow
+        $allStatuses = [
+            'pending', 'cmd_review', 'deputy-dean_review', 'parent_consent', 
+            'dean_review', 'hostel_signout', 'security_signout', 'security_signin', 
+            'hostel_signin', 'completed', 'rejected', 'appeal'
+        ];
+
         $roleStatusMap = [
             'cmd' => ['cmd_review'],
             'deputy_dean' => ['deputy-dean_review'],
-            'dean' => ['dean_review'],
+            'dean' => $allStatuses, // Dean can see all statuses
+            'dean2' => $allStatuses, // Dean2 can see all statuses
+            'admin' => $allStatuses, // Admin can see all statuses
             'hostel_admin' => ['hostel_signout', 'hostel_signin'],
             'security' => ['security_signout', 'security_signin'],
-            'admin' => ['cmd_review', 'deputy-dean_review', 'dean_review', 'parent_review', 'hostel_signout', 'hostel_signin', 'security_signout', 'security_signin'],
         ];
 
         $allowedStatuses = [];
 
         foreach ($roleNames as $role) {
-            if ($role === 'dean2') {
-                $allowedStatuses = array_merge($allowedStatuses, ['cmd_review', 'dean_review', 'deputy-dean_review']);
-            } elseif ($role === 'dean') {
-                $allowedStatuses = array_merge($allowedStatuses, $roleStatusMap['admin']);
-            } elseif (isset($roleStatusMap[$role])) {
+            if (isset($roleStatusMap[$role])) {
                 $allowedStatuses = array_merge($allowedStatuses, $roleStatusMap[$role]);
             } else {
                 Log::notice('Role not mapped to statuses', ['role' => $role]);
@@ -54,6 +58,13 @@ class StaffExeatRequestController extends Controller
         ];
 
         $roles = $user->exeatRoles()->with('role')->get()->pluck('role.name')->toArray();
+        
+        // If user has admin role, they can act as any role based on current status
+        if (in_array('admin', $roles) && isset($roleMap[$currentStatus])) {
+            return $roleMap[$currentStatus];
+        }
+        
+        // For non-admin users, check if they have the specific role for the current status
         foreach ($roles as $role) {
             if (isset($roleMap[$currentStatus]) && $roleMap[$currentStatus] === $role) {
                 return $role;
@@ -78,7 +89,7 @@ class StaffExeatRequestController extends Controller
             return response()->json(['message' => 'No access to exeat requests.'], 403);
         }
 
-        $query = ExeatRequest::query()->with('student:id,fname,lname')->whereIn('status', $allowedStatuses);
+        $query = ExeatRequest::query()->with('student:id,fname,lname,passport')->whereIn('status', $allowedStatuses);
 
         if ($request->has('status')) {
             $query->where('status', $request->input('status'));
@@ -158,7 +169,7 @@ class StaffExeatRequestController extends Controller
             return response()->json(['message' => 'Unauthorized.'], 403);
         }
 
-        $exeatRequest = ExeatRequest::with('student:id,fname,lname')->find($id);
+        $exeatRequest = ExeatRequest::with('student:id,fname,lname,passport')->find($id);
         if (!$exeatRequest) {
             return response()->json(['message' => 'Exeat request not found.'], 404);
         }
@@ -181,7 +192,7 @@ public function approve(StaffExeatApprovalRequest $request, $id)
         return response()->json(['message' => 'Unauthorized.'], 403);
     }
 
-    $exeatRequest = ExeatRequest::find($id);
+    $exeatRequest = ExeatRequest::with('student:id,fname,lname,passport')->find($id);
     if (!$exeatRequest) {
         return response()->json(['message' => 'Exeat request not found.'], 404);
     }
@@ -241,7 +252,7 @@ public function approve(StaffExeatApprovalRequest $request, $id)
         return response()->json(['message' => 'Unauthorized.'], 403);
     }
 
-    $exeatRequest = ExeatRequest::find($id);
+    $exeatRequest = ExeatRequest::with('student:id,fname,lname,passport')->find($id);
     if (!$exeatRequest) {
         return response()->json(['message' => 'Exeat request not found.'], 404);
     }
@@ -298,7 +309,7 @@ public function approve(StaffExeatApprovalRequest $request, $id)
                 return response()->json(['message' => 'Unauthorized.'], 403);
             }
 
-            $exeatRequest = ExeatRequest::find($id);
+            $exeatRequest = ExeatRequest::with('student:id,fname,lname,passport')->find($id);
             if (!$exeatRequest) {
                 return response()->json(['message' => 'Exeat request not found.'], 404);
             }
@@ -329,7 +340,7 @@ public function approve(StaffExeatApprovalRequest $request, $id)
             return response()->json(['message' => 'Unauthorized.'], 403);
         }
 
-        $exeatRequest = ExeatRequest::find($id);
+        $exeatRequest = ExeatRequest::with('student:id,fname,lname,passport')->find($id);
         if (!$exeatRequest) {
             return response()->json(['message' => 'Exeat request not found.'], 404);
         }
@@ -344,7 +355,7 @@ public function approve(StaffExeatApprovalRequest $request, $id)
         $auditLogs = AuditLog::where('target_type', 'exeat_request')
             ->where('target_id', $id)
             ->orderBy('timestamp', 'desc')
-            ->with(['staff:id,fname,lname', 'student:id,fname,lname'])
+            ->with(['staff:id,fname,lname', 'student:id,fname,lname,passport'])
             ->get();
 
         $approvals = ExeatApproval::where('exeat_request_id', $id)
@@ -359,5 +370,139 @@ public function approve(StaffExeatApprovalRequest $request, $id)
         ];
 
         return response()->json(['history' => $history]);
+    }
+
+    /**
+     * Get role-based history - all exeat requests that have passed through the staff member's roles
+     * Shows all requests that went through their role's review stage, regardless of who reviewed them
+     */
+    public function roleHistory(Request $request)
+    {
+        $user = $request->user();
+        if (!($user instanceof \App\Models\Staff)) {
+            return response()->json(['message' => 'Unauthorized.'], 403);
+        }
+
+        $roleNames = $user->exeatRoles()->with('role')->get()->pluck('role.name')->toArray();
+        
+        if (empty($roleNames)) {
+            return response()->json(['message' => 'No roles assigned.'], 403);
+        }
+
+        // Define all possible statuses in the exeat workflow
+        $allStatuses = [
+            'pending', 'cmd_review', 'deputy-dean_review', 'parent_consent', 
+            'dean_review', 'hostel_signout', 'security_signout', 'security_signin', 
+            'hostel_signin', 'completed', 'rejected', 'appeal'
+        ];
+
+        // Map roles to their corresponding statuses that they handle
+        $roleStatusMap = [
+            'cmd' => ['cmd_review'],
+            'deputy_dean' => ['deputy-dean_review'],
+            'dean' => $allStatuses, // Dean can see all statuses
+            'dean2' => $allStatuses, // Dean2 can see all statuses
+            'admin' => $allStatuses, // Admin can see all statuses
+            'hostel_admin' => ['hostel_signout', 'hostel_signin'],
+            'security' => ['security_signout', 'security_signin'],
+        ];
+
+        // Get all statuses that this staff member's roles handle
+        $handledStatuses = [];
+        foreach ($roleNames as $role) {
+            if (isset($roleStatusMap[$role])) {
+                $handledStatuses = array_merge($handledStatuses, $roleStatusMap[$role]);
+            }
+        }
+
+        $handledStatuses = array_unique($handledStatuses);
+
+        if (empty($handledStatuses)) {
+            return response()->json(['message' => 'No handled statuses found for your roles.'], 403);
+        }
+
+        // Check if user has admin, dean, or dean2 role - they can see ALL requests
+        $canSeeAllRequests = array_intersect(['admin', 'dean', 'dean2'], $roleNames);
+        
+        if (!empty($canSeeAllRequests)) {
+            // Admin, dean, and dean2 can see all exeat requests
+            $allRequestIds = ExeatRequest::pluck('id')->toArray();
+        } else {
+            // Get all exeat requests that have passed through the workflow stages handled by this staff member's roles
+            // This includes requests that have been at these statuses at any point, regardless of who processed them
+            $requestsWithApprovals = ExeatApproval::whereIn('role', $roleNames)
+                ->distinct()
+                ->pluck('exeat_request_id')
+                ->toArray();
+
+            // Also get requests that are currently at or have passed through the statuses this staff can handle
+            $requestsAtStatuses = ExeatRequest::whereIn('status', $handledStatuses)
+                ->pluck('id')
+                ->toArray();
+
+            // Get requests that have audit logs showing they were at these statuses (passed through)
+            $requestsFromAuditLogs = AuditLog::where('target_type', 'exeat_request')
+                ->where(function($query) use ($handledStatuses) {
+                    foreach ($handledStatuses as $status) {
+                        $query->orWhere('details', 'like', "%to {$status}%");
+                    }
+                })
+                ->distinct()
+                ->pluck('target_id')
+                ->toArray();
+
+            // Combine all request IDs to get comprehensive role history
+            $allRequestIds = array_unique(array_merge($requestsWithApprovals, $requestsAtStatuses, $requestsFromAuditLogs));
+        }
+
+        if (empty($allRequestIds)) {
+            return response()->json([
+                'message' => 'No exeat requests found for your roles.',
+                'exeat_requests' => [],
+                'roles' => $roleNames,
+                'handled_statuses' => $handledStatuses
+            ]);
+        }
+
+        // Get the exeat requests with their complete approval history
+        $exeatRequests = ExeatRequest::whereIn('id', $allRequestIds)
+            ->with([
+                'student:id,fname,lname,passport',
+                'approvals' => function($query) {
+                    $query->with('staff:id,fname,lname')
+                          ->orderBy('updated_at', 'desc');
+                },
+                'approvals.staff:id,fname,lname'
+            ])
+            ->orderBy('updated_at', 'desc')
+            ->paginate(20);
+
+        // Add role information to each request
+        foreach ($exeatRequests as $request) {
+            $request->staff_roles = $roleNames;
+            $request->acting_roles = [];
+            
+            // Determine which roles this staff member could act as for this request
+            foreach ($roleNames as $role) {
+                if ($role === 'admin' || $role === 'dean') {
+                    $request->acting_roles[] = $role;
+                } elseif (isset($roleStatusMap[$role])) {
+                    foreach ($roleStatusMap[$role] as $status) {
+                        if ($request->status === $status || 
+                            (isset($request->status_history) && strpos($request->status_history, $status) !== false)) {
+                            $request->acting_roles[] = $role;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        return response()->json([
+            'message' => 'Role-based exeat history retrieved successfully.',
+            'exeat_requests' => $exeatRequests,
+            'staff_roles' => $roleNames,
+            'handled_statuses' => $handledStatuses
+        ]);
     }
 }

@@ -79,6 +79,10 @@ class StudentExeatRequestController extends Controller
             'role' => $isMedical ? 'medical_officer' : 'deputy_dean',
             'status' => 'pending',
         ]);
+        
+        // Check if request covers weekdays and send notification if needed
+        $exeat->checkWeekdaysAndNotify();
+        
         Log::info('Student created exeat request', ['student_id' => $user->id, 'exeat_id' => $exeat->id]);
         try {
             \Mail::raw("Your exeat request has been submitted and is now under review.\n\nReason: {$exeat->reason}\nStatus: {$exeat->status}", function ($msg) use ($user) {
@@ -133,7 +137,7 @@ public function categories()
     {
         $user = $request->user();
         $exeats = ExeatRequest::where('student_id', $user->id)
-            ->with('category:id,name')
+            ->with(['category:id,name', 'student:id,fname,lname,passport'])
             ->orderBy('created_at', 'desc')
             ->get();
         return response()->json(['exeat_requests' => $exeats]);
@@ -145,7 +149,7 @@ public function categories()
         $user = $request->user();
         $exeat = ExeatRequest::where('id', $id)
             ->where('student_id', $user->id)
-            ->with('category:id,name')
+            ->with(['category:id,name', 'student:id,fname,lname,passport'])
             ->first();
         if (!$exeat) {
             return response()->json(['message' => 'Exeat request not found.'], 404);
@@ -210,7 +214,7 @@ public function categories()
         $auditLogs = AuditLog::where('target_type', 'exeat_request')
             ->where('target_id', $id)
             ->orderBy('timestamp', 'desc')
-            ->with(['staff:id,fname,lname', 'student:id,fname,lname'])
+            ->with(['staff:id,fname,lname', 'student:id,fname,lname,passport'])
             ->get();
 
         // Get all approvals with their staff information
