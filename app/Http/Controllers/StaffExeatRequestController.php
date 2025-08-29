@@ -219,6 +219,7 @@ public function approve(StaffExeatApprovalRequest $request, $id)
     $alreadyApproved = ExeatApproval::where('exeat_request_id', $exeatRequest->id)
         ->where('staff_id', $user->id)
         ->where('role', $actingRole)
+        ->where('method', $exeatRequest->status)
         ->exists();
 
     if ($alreadyApproved) {
@@ -235,6 +236,7 @@ public function approve(StaffExeatApprovalRequest $request, $id)
             'status' => 'approved',
             'comment' => $validated['comment'] ?? null,
             'role' => $actingRole,
+            'method' => $exeatRequest->status,
         ]);
 
         $this->workflowService->approve($exeatRequest, $approval, $approval->comment);
@@ -278,6 +280,7 @@ public function approve(StaffExeatApprovalRequest $request, $id)
     $alreadyActed = ExeatApproval::where('exeat_request_id', $exeatRequest->id)
         ->where('staff_id', $user->id)
         ->where('role', $actingRole)
+        ->where('method', $exeatRequest->status)
         ->exists();
 
     if ($alreadyActed) {
@@ -295,6 +298,7 @@ public function approve(StaffExeatApprovalRequest $request, $id)
             'status' => 'rejected',
             'comment' => $validated['comment'],
             'role' => $actingRole,
+            'method' => $exeatRequest->status,
         ]);
 
         $this->workflowService->reject($exeatRequest, $approval, $approval->comment);

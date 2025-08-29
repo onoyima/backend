@@ -507,8 +507,8 @@ EOT;
         if ($oldStatus === 'security_signout' && $approval->role === 'security') {
             SecuritySignout::create([
                 'exeat_request_id' => $exeatRequest->id,
-                'signed_out_at' => now(),
-                'signed_in_at' => null,
+                'signout_time' => now(),
+                'signin_time' => null,
                 'security_id' => $approval->staff_id,
             ]);
 
@@ -524,11 +524,11 @@ EOT;
         // Handle security signin
         if ($oldStatus === 'security_signin' && $approval->role === 'security') {
             $signout = SecuritySignout::where('exeat_request_id', $exeatRequest->id)
-                ->whereNull('signed_in_at')
+                ->whereNull('signin_time')
                 ->first();
 
             if ($signout) {
-                $signout->signed_in_at = now();
+                $signout->signin_time = now();
                 $signout->save();
 
                 // Send parent notification for sign-in
@@ -545,8 +545,8 @@ EOT;
         if ($oldStatus === 'hostel_signout' && $approval->role === 'hostel_admin') {
             HostelSignout::create([
                 'exeat_request_id' => $exeatRequest->id,
-                'signed_out_at' => now(),
-                'signed_in_at' => null,
+                'signout_time' => now(),
+                'signin_time' => null,
                 'hostel_admin_id' => $approval->staff_id,
             ]);
 
@@ -559,11 +559,11 @@ EOT;
         // Handle hostel signin
         if ($oldStatus === 'hostel_signin' && $approval->role === 'hostel_admin') {
             $signout = HostelSignout::where('exeat_request_id', $exeatRequest->id)
-                ->whereNull('signed_in_at')
+                ->whereNull('signin_time')
                 ->first();
 
             if ($signout) {
-                $signout->signed_in_at = now();
+                $signout->signin_time = now();
                 $signout->save();
 
                 Log::info('Hostel admin signed in student', [

@@ -36,4 +36,6 @@ model_audit.php
 /resources/views/emails/exeat-notification.blade copy.php
 test_exeat_creation.php
 /database/migrations/2025_08_28_153111_create_exeat_notifications_table.php
+API_DOCUMENTATION.md
+API_ENDPOINTS.md
 
