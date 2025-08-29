@@ -6,12 +6,22 @@ use App\Models\ExeatRequest;
 use App\Models\ExeatApproval;
 use App\Models\ParentConsent;
 use App\Models\AuditLog;
+use App\Models\SecuritySignout;
+use App\Models\HostelSignout;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Twilio\Rest\Client;
 use Carbon\Carbon;
+use App\Services\ExeatNotificationService;
 
 class ExeatWorkflowService
 {
+    protected $notificationService;
+
+    public function __construct(ExeatNotificationService $notificationService)
+    {
+        $this->notificationService = $notificationService;
+    }
     public function approve(ExeatRequest $exeatRequest, ExeatApproval $approval, $comment = null)
     {
         $oldStatus = $exeatRequest->status;
@@ -19,6 +29,9 @@ class ExeatWorkflowService
         $approval->status = 'approved';
         $approval->comment = $comment;
         $approval->save();
+
+        // Handle special actions for security and hostel stages
+        $this->handleSpecialStageActions($exeatRequest, $approval, $oldStatus);
 
         $this->advanceStage($exeatRequest);
 
@@ -46,6 +59,13 @@ class ExeatWorkflowService
 
         $exeatRequest->status = 'rejected';
         $exeatRequest->save();
+
+        // Send rejection notification to student
+        try {
+            $this->notificationService->sendRejectionNotification($exeatRequest, $comment);
+        } catch (\Exception $e) {
+            Log::error('Failed to send rejection notification', ['error' => $e->getMessage(), 'exeat_id' => $exeatRequest->id]);
+        }
 
         $this->createAuditLog(
             $exeatRequest,
@@ -97,8 +117,21 @@ class ExeatWorkflowService
                 Log::warning("WorkflowService: Unknown or final status {$exeatRequest->status} for ExeatRequest ID {$exeatRequest->id}");
                 return;
         }
-        $this->notifyStudentStatusChange($exeatRequest);
         $exeatRequest->save();
+
+        // Send stage change notification to student
+        try {
+            $this->notificationService->sendStageChangeNotification($exeatRequest, $oldStatus, $exeatRequest->status);
+        } catch (\Exception $e) {
+            Log::error('Failed to send stage change notification', ['error' => $e->getMessage(), 'exeat_id' => $exeatRequest->id]);
+        }
+
+        // Send approval required notification to next role
+        try {
+            $this->sendApprovalNotificationForStage($exeatRequest);
+        } catch (\Exception $e) {
+            Log::error('Failed to send approval required notification', ['error' => $e->getMessage(), 'exeat_id' => $exeatRequest->id]);
+        }
 
         // ✅ Automatically trigger parent consent mail
     if ($exeatRequest->status === 'parent_consent') {
@@ -152,7 +185,7 @@ class ExeatWorkflowService
 
     Please review and provide your consent before $expiryText:
 
-    Approve: $linkApprove  
+    Approve: $linkApprove
     Reject: $linkReject
 
     Thank you for your support.
@@ -163,14 +196,14 @@ class ExeatWorkflowService
         $notificationSMS = "Dear Parent of $studentName, reason: \"$reason\".\nApprove: $linkApprove\nReject: $linkReject\nValid until: $expiryText";
 
         try {
-            \Mail::raw($notificationEmail, fn($msg) => $msg->to($parentEmail)->subject('Exeat Consent Request'));
-            \Mail::raw($notificationEmail, fn($msg) => $msg->to('onoyimab@veritas.edu.ng')->subject('Exeat Consent Request'));
+            Mail::raw($notificationEmail, fn($msg) => $msg->to($parentEmail)->subject('Exeat Consent Request'));
+            Mail::raw($notificationEmail, fn($msg) => $msg->to('onoyimab@veritas.edu.ng')->subject('Exeat Consent Request'));
             // Uncomment to enable SMS/WhatsApp notifications for parent consent:
-            // if ($method === 'text') {
-            //     $this->sendSmsOrWhatsapp($parentPhone, $notificationSMS, 'sms');
-            // } else if ($method === 'whatsapp') {
-            //     $this->sendSmsOrWhatsapp($parentPhone, $notificationSMS, 'whatsapp');
-            // }
+            if ($method === 'text') {
+                $this->sendSmsOrWhatsapp($parentPhone, $notificationSMS, 'sms');
+            } else if ($method === 'whatsapp') {
+                $this->sendSmsOrWhatsapp($parentPhone, $notificationSMS, 'whatsapp');
+            }
         } catch (\Exception $e) {
             Log::error('Email failed', ['error' => $e->getMessage()]);
         }
@@ -209,7 +242,20 @@ class ExeatWorkflowService
         $oldStatus = $exeatRequest->status;
         $exeatRequest->status = 'dean_review';
         $exeatRequest->save();
-        $this->notifyStudentStatusChange($exeatRequest);
+
+        // Send stage change notification to student
+        try {
+            $this->notificationService->sendStageChangeNotification($exeatRequest, 'parent_consent', 'dean_review');
+        } catch (\Exception $e) {
+            Log::error('Failed to send stage change notification', ['error' => $e->getMessage(), 'exeat_id' => $exeatRequest->id]);
+        }
+
+        // Send approval required notification to dean
+        try {
+            $this->notificationService->sendApprovalRequiredNotification($exeatRequest, 'dean');
+        } catch (\Exception $e) {
+            Log::error('Failed to send approval required notification', ['error' => $e->getMessage(), 'exeat_id' => $exeatRequest->id]);
+        }
 
         $this->createAuditLog(
             $exeatRequest,
@@ -238,7 +284,13 @@ class ExeatWorkflowService
         $oldStatus = $exeatRequest->status;
         $exeatRequest->status = 'rejected';
         $exeatRequest->save();
-        $this->notifyStudentStatusChange($exeatRequest);
+
+        // Send rejection notification to student
+        try {
+            $this->notificationService->sendRejectionNotification($exeatRequest, 'Parent declined consent for this exeat request');
+        } catch (\Exception $e) {
+            Log::error('Failed to send rejection notification', ['error' => $e->getMessage(), 'exeat_id' => $exeatRequest->id]);
+        }
 
         $this->createAuditLog(
             $exeatRequest,
@@ -273,7 +325,20 @@ class ExeatWorkflowService
         $oldStatus = $exeatRequest->status;
         $exeatRequest->status = 'dean_review';
         $exeatRequest->save();
-        $this->notifyStudentStatusChange($exeatRequest);
+
+        // Send stage change notification to student
+        try {
+            $this->notificationService->sendStageChangeNotification($exeatRequest, 'parent_consent', 'dean_review');
+        } catch (\Exception $e) {
+            Log::error('Failed to send stage change notification', ['error' => $e->getMessage(), 'exeat_id' => $exeatRequest->id]);
+        }
+
+        // Send approval required notification to dean
+        try {
+            $this->notificationService->sendApprovalRequiredNotification($exeatRequest, 'dean');
+        } catch (\Exception $e) {
+            Log::error('Failed to send approval required notification', ['error' => $e->getMessage(), 'exeat_id' => $exeatRequest->id]);
+        }
 
         $this->createAuditLog(
             $exeatRequest,
@@ -383,6 +448,24 @@ class ExeatWorkflowService
 }
 
 
+protected function sendApprovalNotificationForStage(ExeatRequest $exeatRequest)
+{
+    $roleMap = [
+        'cmd_review' => 'cmd',
+        'deputy-dean_review' => 'deputy_dean',
+        'dean_review' => 'dean',
+        'hostel_signout' => 'hostel_admin',
+        'security_signout' => 'security',
+        'security_signin' => 'security',
+        'hostel_signin' => 'hostel_admin'
+    ];
+
+    if (isset($roleMap[$exeatRequest->status])) {
+        $role = $roleMap[$exeatRequest->status];
+        $this->notificationService->sendApprovalRequiredNotification($exeatRequest, $role);
+    }
+}
+
 protected function notifyStudentStatusChange(ExeatRequest $exeatRequest)
 {
     $student = $exeatRequest->student;
@@ -406,14 +489,135 @@ Thank you.
 EOT;
 
     try {
-        \Mail::raw($message, function ($msg) use ($student) {
+        Mail::raw($message, function ($msg) use ($student) {
             $msg->to($student->username) // Email is stored in 'username' field
                 ->subject('Exeat Request Status Updated');
         });
     } catch (\Exception $e) {
-        \Log::error('Failed to send status update email', ['error' => $e->getMessage()]);
+        Log::error('Failed to send status update email', ['error' => $e->getMessage()]);
     }
 }
 
+    /**
+     * Handle special stage actions for security and hostel stages
+     */
+    private function handleSpecialStageActions(ExeatRequest $exeatRequest, ExeatApproval $approval, $oldStatus)
+    {
+        // Handle security signout
+        if ($oldStatus === 'security_signout' && $approval->role === 'security') {
+            SecuritySignout::create([
+                'exeat_request_id' => $exeatRequest->id,
+                'signed_out_at' => now(),
+                'signed_in_at' => null,
+                'security_id' => $approval->staff_id,
+            ]);
 
+            // Send parent notification for sign-out
+            $this->sendParentNotification($exeatRequest, 'OUT');
+
+            Log::info('Security signed out student at gate', [
+                'exeat_id' => $exeatRequest->id,
+                'security_id' => $approval->staff_id
+            ]);
+        }
+
+        // Handle security signin
+        if ($oldStatus === 'security_signin' && $approval->role === 'security') {
+            $signout = SecuritySignout::where('exeat_request_id', $exeatRequest->id)
+                ->whereNull('signed_in_at')
+                ->first();
+
+            if ($signout) {
+                $signout->signed_in_at = now();
+                $signout->save();
+
+                // Send parent notification for sign-in
+                $this->sendParentNotification($exeatRequest, 'IN');
+
+                Log::info('Security signed in student at gate', [
+                    'exeat_id' => $exeatRequest->id,
+                    'security_id' => $approval->staff_id
+                ]);
+            }
+        }
+
+        // Handle hostel signout
+        if ($oldStatus === 'hostel_signout' && $approval->role === 'hostel_admin') {
+            HostelSignout::create([
+                'exeat_request_id' => $exeatRequest->id,
+                'signed_out_at' => now(),
+                'signed_in_at' => null,
+                'hostel_admin_id' => $approval->staff_id,
+            ]);
+
+            Log::info('Hostel admin signed out student', [
+                'exeat_id' => $exeatRequest->id,
+                'admin_id' => $approval->staff_id
+            ]);
+        }
+
+        // Handle hostel signin
+        if ($oldStatus === 'hostel_signin' && $approval->role === 'hostel_admin') {
+            $signout = HostelSignout::where('exeat_request_id', $exeatRequest->id)
+                ->whereNull('signed_in_at')
+                ->first();
+
+            if ($signout) {
+                $signout->signed_in_at = now();
+                $signout->save();
+
+                Log::info('Hostel admin signed in student', [
+                    'exeat_id' => $exeatRequest->id,
+                    'admin_id' => $approval->staff_id
+                ]);
+            }
+        }
+    }
+
+    /**
+     * Send parent notification for security sign-in/out events
+     */
+    private function sendParentNotification(ExeatRequest $exeat, string $action)
+    {
+        if (!$exeat->parent_email) {
+            Log::warning('No parent email available for exeat request', ['exeat_id' => $exeat->id]);
+            return;
+        }
+
+        $student = $exeat->student;
+        $studentName = $student ? "{$student->fname} {$student->lname}" : 'Student';
+        $matricNo = $exeat->matric_no ?? 'N/A';
+        $timestamp = now()->format('M d, Y g:i A');
+
+        $subject = "Student Security {$action} - {$studentName}";
+        $message = sprintf(
+            "Dear Parent/Guardian,\n\nThis is to inform you that your ward %s (Matric No: %s) has been signed %s by Security on %s.\n\nExeat Details:\n- Reason: %s\n- Destination: %s\n- Expected Return: %s\n\nIf you have any concerns, please contact the university immediately.\n\nThank you.\n\n— VERITAS University Security Department",
+            $studentName,
+            $matricNo,
+            $action,
+            $timestamp,
+            $exeat->reason,
+            $exeat->destination,
+            \Carbon\Carbon::parse($exeat->return_date)->format('M d, Y')
+        );
+
+        try {
+            Mail::raw($message, function ($msg) use ($exeat, $subject) {
+                $msg->to($exeat->parent_email)
+                    ->subject($subject);
+            });
+
+            Log::info('Parent notification sent for security action', [
+                'exeat_id' => $exeat->id,
+                'action' => $action,
+                'parent_email' => $exeat->parent_email
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to send parent notification', [
+                'error' => $e->getMessage(),
+                'exeat_id' => $exeat->id,
+                'action' => $action
+            ]);
+        }
+    }
 }

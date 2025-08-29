@@ -13,13 +13,21 @@ use Illuminate\Support\Facades\DB;
 
 class StaffExeatRequestController extends Controller
 {
+    protected $workflowService;
+
+    public function __construct(ExeatWorkflowService $workflowService)
+    {
+        $this->workflowService = $workflowService;
+        $this->middleware('auth:sanctum');
+    }
+
     private function getAllowedStatuses(array $roleNames)
     {
-        // Define active workflow statuses (excluding completed and rejected)
+        // Define all workflow statuses
         $activeStatuses = [
             'pending', 'cmd_review', 'deputy-dean_review', 'parent_consent', 
             'dean_review', 'hostel_signout', 'security_signout', 'security_signin', 
-            'hostel_signin', 'appeal'
+            'hostel_signin', 'completed', 'rejected', 'cancelled', 'appeal'
         ];
 
         $roleStatusMap = [
@@ -218,7 +226,6 @@ public function approve(StaffExeatApprovalRequest $request, $id)
     }
 
     $validated = $request->validate(['comment' => 'nullable|string']);
-    $workflow = new ExeatWorkflowService();
 
     DB::beginTransaction();
     try {
@@ -230,7 +237,7 @@ public function approve(StaffExeatApprovalRequest $request, $id)
             'role' => $actingRole,
         ]);
 
-        $workflow->approve($exeatRequest, $approval, $approval->comment);
+        $this->workflowService->approve($exeatRequest, $approval, $approval->comment);
 
         DB::commit();
     } catch (\Throwable $e) {
@@ -290,7 +297,7 @@ public function approve(StaffExeatApprovalRequest $request, $id)
             'role' => $actingRole,
         ]);
 
-        $workflow->reject($exeatRequest, $approval, $approval->comment);
+        $this->workflowService->reject($exeatRequest, $approval, $approval->comment);
 
         DB::commit();
     } catch (\Throwable $e) {
@@ -324,8 +331,7 @@ public function approve(StaffExeatApprovalRequest $request, $id)
                 'message' => 'nullable|string',
             ]);
 
-            $workflow = new ExeatWorkflowService();
-            $parentConsent = $workflow->sendParentConsent($exeatRequest, $validated['method'], $validated['message'] ?? null, $user->id);
+            $parentConsent = $this->workflowService->sendParentConsent($exeatRequest, $validated['method'], $validated['message'] ?? null, $user->id);
 
             return response()->json([
                 'message' => 'Parent consent request sent.',

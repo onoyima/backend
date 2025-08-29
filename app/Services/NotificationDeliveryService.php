@@ -17,11 +17,9 @@ use Exception;
 
 class NotificationDeliveryService
 {
-    protected $preferenceService;
-
-    public function __construct(NotificationPreferenceService $preferenceService)
+    public function __construct()
     {
-        $this->preferenceService = $preferenceService;
+        // No dependencies needed
     }
 
     /**
@@ -29,7 +27,8 @@ class NotificationDeliveryService
      */
     public function queueNotificationDelivery(ExeatNotification $notification): void
     {
-        $deliveryMethods = $notification->delivery_methods;
+        // Always use email and in-app delivery methods
+        $deliveryMethods = ['email', 'in_app'];
         
         foreach ($deliveryMethods as $method) {
             // Check if delivery is allowed based on quiet hours
@@ -42,6 +41,30 @@ class NotificationDeliveryService
             SendNotificationJob::dispatch($notification, $method)
                 ->onQueue('notifications');
         }
+    }
+
+    /**
+     * Deliver notification synchronously without using queues.
+     */
+    public function deliverNotificationSync(ExeatNotification $notification): array
+    {
+        $results = [];
+        // Always use email and in-app delivery methods
+        $deliveryMethods = ['email', 'in_app'];
+        
+        foreach ($deliveryMethods as $method) {
+            // Check if delivery is allowed based on quiet hours
+            if ($this->isQuietHours($notification, $method)) {
+                $results[$method] = ['success' => false, 'reason' => 'quiet_hours'];
+                continue;
+            }
+            
+            // Deliver immediately
+            $success = $this->deliverNotification($notification, $method);
+            $results[$method] = ['success' => $success, 'reason' => $success ? 'delivered' : 'failed'];
+        }
+        
+        return $results;
     }
 
     /**
@@ -62,7 +85,8 @@ class NotificationDeliveryService
             
             if ($success) {
                 $this->updateDeliveryStatus($notification, $method, 'delivered');
-                event(new NotificationSent($notification, $method));
+                // TODO: Create NotificationSent event if needed
+                // event(new NotificationSent($notification, $method));
             } else {
                 $this->updateDeliveryStatus($notification, $method, 'failed');
             }
@@ -89,7 +113,7 @@ class NotificationDeliveryService
         // In-app notifications are already created in the database
         // Just mark as delivered
         $log->update([
-            'delivery_status' => NotificationDeliveryLog::STATUS_DELIVERED,
+            'status' => NotificationDeliveryLog::STATUS_DELIVERED,
             'delivered_at' => now()
         ]);
         
@@ -105,7 +129,7 @@ class NotificationDeliveryService
         
         if (!$recipient || !$recipient['email']) {
             $log->update([
-                'delivery_status' => NotificationDeliveryLog::STATUS_FAILED,
+                'status' => NotificationDeliveryLog::STATUS_FAILED,
                 'error_message' => 'No email address found for recipient'
             ]);
             return false;
@@ -121,7 +145,7 @@ class NotificationDeliveryService
             });
             
             $log->update([
-                'delivery_status' => NotificationDeliveryLog::STATUS_DELIVERED,
+                'status' => NotificationDeliveryLog::STATUS_DELIVERED,
                 'delivered_at' => now()
             ]);
             
@@ -129,7 +153,7 @@ class NotificationDeliveryService
             
         } catch (Exception $e) {
             $log->update([
-                'delivery_status' => NotificationDeliveryLog::STATUS_FAILED,
+                'status' => NotificationDeliveryLog::STATUS_FAILED,
                 'error_message' => $e->getMessage()
             ]);
             
@@ -146,7 +170,7 @@ class NotificationDeliveryService
         
         if (!$recipient || !$recipient['phone']) {
             $log->update([
-                'delivery_status' => NotificationDeliveryLog::STATUS_FAILED,
+                'status' => NotificationDeliveryLog::STATUS_FAILED,
                 'error_message' => 'No phone number found for recipient'
             ]);
             return false;
@@ -164,16 +188,18 @@ class NotificationDeliveryService
                 $responseData = $response->json();
                 
                 $log->update([
-                    'delivery_status' => NotificationDeliveryLog::STATUS_DELIVERED,
-                    'delivery_provider' => 'sms_service',
-                    'provider_message_id' => $responseData['message_id'] ?? null,
-                    'delivered_at' => now()
+                    'status' => NotificationDeliveryLog::STATUS_DELIVERED,
+                    'delivered_at' => now(),
+                    'metadata' => [
+                        'delivery_provider' => 'sms_service',
+                        'provider_message_id' => $responseData['message_id'] ?? null
+                    ]
                 ]);
                 
                 return true;
             } else {
                 $log->update([
-                    'delivery_status' => NotificationDeliveryLog::STATUS_FAILED,
+                    'status' => NotificationDeliveryLog::STATUS_FAILED,
                     'error_message' => 'SMS service returned error: ' . $response->body()
                 ]);
                 
@@ -182,7 +208,7 @@ class NotificationDeliveryService
             
         } catch (Exception $e) {
             $log->update([
-                'delivery_status' => NotificationDeliveryLog::STATUS_FAILED,
+                'status' => NotificationDeliveryLog::STATUS_FAILED,
                 'error_message' => $e->getMessage()
             ]);
             
@@ -199,7 +225,7 @@ class NotificationDeliveryService
         
         if (!$recipient || !$recipient['phone']) {
             $log->update([
-                'delivery_status' => NotificationDeliveryLog::STATUS_FAILED,
+                'status' => NotificationDeliveryLog::STATUS_FAILED,
                 'error_message' => 'No phone number found for recipient'
             ]);
             return false;
@@ -223,16 +249,18 @@ class NotificationDeliveryService
                 $responseData = $response->json();
                 
                 $log->update([
-                    'delivery_status' => NotificationDeliveryLog::STATUS_DELIVERED,
-                    'delivery_provider' => 'whatsapp_business',
-                    'provider_message_id' => $responseData['messages'][0]['id'] ?? null,
-                    'delivered_at' => now()
+                    'status' => NotificationDeliveryLog::STATUS_DELIVERED,
+                    'delivered_at' => now(),
+                    'metadata' => [
+                        'delivery_provider' => 'whatsapp_business',
+                        'provider_message_id' => $responseData['messages'][0]['id'] ?? null
+                    ]
                 ]);
                 
                 return true;
             } else {
                 $log->update([
-                    'delivery_status' => NotificationDeliveryLog::STATUS_FAILED,
+                    'status' => NotificationDeliveryLog::STATUS_FAILED,
                     'error_message' => 'WhatsApp service returned error: ' . $response->body()
                 ]);
                 
@@ -241,7 +269,7 @@ class NotificationDeliveryService
             
         } catch (Exception $e) {
             $log->update([
-                'delivery_status' => NotificationDeliveryLog::STATUS_FAILED,
+                'status' => NotificationDeliveryLog::STATUS_FAILED,
                 'error_message' => $e->getMessage()
             ]);
             
@@ -259,7 +287,7 @@ class NotificationDeliveryService
                 $student = Student::find($notification->recipient_id);
                 return $student ? [
                     'name' => $student->full_name,
-                    'email' => $student->email,
+                    'email' => $student->username,
                     'phone' => $student->phone
                 ] : null;
                 
@@ -281,16 +309,20 @@ class NotificationDeliveryService
      */
     protected function createDeliveryLog(ExeatNotification $notification, string $method): NotificationDeliveryLog
     {
+        $recipient = $this->getRecipientDetails($notification);
+        $recipientIdentifier = $recipient ? ($recipient['email'] ?: $recipient['phone'] ?: $recipient['name']) : 'unknown';
+        
         return NotificationDeliveryLog::create([
             'notification_id' => $notification->id,
-            'delivery_method' => $method,
-            'delivery_status' => NotificationDeliveryLog::STATUS_PENDING,
-            'attempted_at' => now()
+            'channel' => $method,
+            'recipient' => $recipientIdentifier,
+            'status' => NotificationDeliveryLog::STATUS_PENDING
         ]);
     }
 
     /**
      * Update delivery status in notification.
+     * Note: This method is deprecated as we now use NotificationDeliveryLog table
      */
     protected function updateDeliveryStatus(
         ExeatNotification $notification,
@@ -298,14 +330,8 @@ class NotificationDeliveryService
         string $status,
         string $errorMessage = null
     ): void {
-        $deliveryStatus = $notification->delivery_status;
-        $deliveryStatus[$method] = [
-            'status' => $status,
-            'timestamp' => now()->toISOString(),
-            'error' => $errorMessage
-        ];
-        
-        $notification->update(['delivery_status' => $deliveryStatus]);
+        // This method is no longer used as we track delivery status in NotificationDeliveryLog table
+        // Keeping for backward compatibility but not implementing
     }
 
     /**
@@ -323,25 +349,8 @@ class NotificationDeliveryService
             return false;
         }
         
-        $preferences = $this->preferenceService->getUserPreferences(
-            $notification->recipient_type,
-            $notification->recipient_id
-        );
-        
-        if (!$preferences || !$preferences->quiet_hours_start || !$preferences->quiet_hours_end) {
-            return false;
-        }
-        
-        $now = now();
-        $quietStart = $now->copy()->setTimeFromTimeString($preferences->quiet_hours_start);
-        $quietEnd = $now->copy()->setTimeFromTimeString($preferences->quiet_hours_end);
-        
-        // Handle overnight quiet hours (e.g., 22:00 to 06:00)
-        if ($quietStart->gt($quietEnd)) {
-            return $now->gte($quietStart) || $now->lte($quietEnd);
-        }
-        
-        return $now->between($quietStart, $quietEnd);
+        // No quiet hours logic - always send immediately
+        return false;
     }
 
     /**
@@ -349,25 +358,8 @@ class NotificationDeliveryService
      */
     protected function scheduleForLater(ExeatNotification $notification, string $method): void
     {
-        $preferences = $this->preferenceService->getUserPreferences(
-            $notification->recipient_type,
-            $notification->recipient_id
-        );
-        
-        if (!$preferences || !$preferences->quiet_hours_end) {
-            // Default to 8 AM if no preferences
-            $deliveryTime = now()->addDay()->setTime(8, 0);
-        } else {
-            $deliveryTime = now()->copy()->setTimeFromTimeString($preferences->quiet_hours_end);
-            
-            // If quiet hours end is earlier today, schedule for tomorrow
-            if ($deliveryTime->lt(now())) {
-                $deliveryTime->addDay();
-            }
-        }
-        
+        // No scheduling needed - send immediately
         SendNotificationJob::dispatch($notification, $method)
-            ->delay($deliveryTime)
             ->onQueue('notifications');
     }
 
@@ -399,7 +391,7 @@ class NotificationDeliveryService
      */
     public function retryFailedDeliveries(int $maxRetries = 3): int
     {
-        $failedLogs = NotificationDeliveryLog::where('delivery_status', NotificationDeliveryLog::STATUS_FAILED)
+        $failedLogs = NotificationDeliveryLog::where('status', NotificationDeliveryLog::STATUS_FAILED)
             ->where('retry_count', '<', $maxRetries)
             ->with('notification')
             ->get();
@@ -407,7 +399,7 @@ class NotificationDeliveryService
         $retriedCount = 0;
         
         foreach ($failedLogs as $log) {
-            if ($this->deliverNotification($log->notification, $log->delivery_method)) {
+            if ($this->deliverNotification($log->notification, $log->channel)) {
                 $retriedCount++;
             }
             
@@ -433,23 +425,23 @@ class NotificationDeliveryService
         }
         
         if (isset($filters['method'])) {
-            $query->where('delivery_method', $filters['method']);
+            $query->where('channel', $filters['method']);
         }
         
         $stats = $query->selectRaw('
-            delivery_method,
-            delivery_status,
+            channel,
+            status,
             COUNT(*) as count
         ')
-        ->groupBy('delivery_method', 'delivery_status')
+        ->groupBy('channel', 'status')
         ->get()
-        ->groupBy('delivery_method');
+        ->groupBy('channel');
         
         return $stats->map(function ($methodStats) {
             $total = $methodStats->sum('count');
-            $delivered = $methodStats->where('delivery_status', NotificationDeliveryLog::STATUS_DELIVERED)->sum('count');
-            $failed = $methodStats->where('delivery_status', NotificationDeliveryLog::STATUS_FAILED)->sum('count');
-            $pending = $methodStats->where('delivery_status', NotificationDeliveryLog::STATUS_PENDING)->sum('count');
+            $delivered = $methodStats->where('status', NotificationDeliveryLog::STATUS_DELIVERED)->sum('count');
+            $failed = $methodStats->where('status', NotificationDeliveryLog::STATUS_FAILED)->sum('count');
+            $pending = $methodStats->where('status', NotificationDeliveryLog::STATUS_PENDING)->sum('count');
             
             return [
                 'total' => $total,

@@ -4,7 +4,6 @@ namespace App\Services;
 
 use App\Models\ExeatNotification;
 use App\Models\ExeatRequest;
-use App\Models\NotificationPreference;
 use App\Models\Student;
 use App\Models\Staff;
 use App\Models\StudentContact;
@@ -14,14 +13,11 @@ use Illuminate\Support\Facades\Log;
 class ExeatNotificationService
 {
     protected $deliveryService;
-    protected $preferenceService;
 
     public function __construct(
-        NotificationDeliveryService $deliveryService,
-        NotificationPreferenceService $preferenceService
+        NotificationDeliveryService $deliveryService
     ) {
         $this->deliveryService = $deliveryService;
-        $this->preferenceService = $preferenceService;
     }
 
     /**
@@ -46,14 +42,28 @@ class ExeatNotificationService
                 'title' => $title,
                 'message' => $message,
                 'priority' => $priority,
-                'delivery_methods' => $this->getDeliveryMethods($recipient['type'], $recipient['id'], $type, $priority),
-                'delivery_status' => [],
             ]);
 
             $notifications->push($notification);
 
-            // Queue notification for delivery
-            $this->deliveryService->queueNotificationDelivery($notification);
+            // Deliver notification synchronously
+            $deliveryResults = $this->deliveryService->deliverNotificationSync($notification);
+
+            // Log delivery results
+            foreach ($deliveryResults as $method => $result) {
+                if ($result['success']) {
+                    Log::info("Notification delivered via {$method}", [
+                        'notification_id' => $notification->id,
+                        'recipient_type' => $notification->recipient_type,
+                        'recipient_id' => $notification->recipient_id
+                    ]);
+                } else {
+                    Log::warning("Failed to deliver notification via {$method}", [
+                        'notification_id' => $notification->id,
+                        'reason' => $result['reason']
+                    ]);
+                }
+            }
         }
 
         return $notifications;
@@ -68,10 +78,10 @@ class ExeatNotificationService
         string $newStatus
     ): Collection {
         $recipients = $this->getStageChangeRecipients($exeatRequest, $newStatus);
-        
+
         $title = "Exeat Request Status Updated";
         $message = $this->buildStageChangeMessage($exeatRequest, $oldStatus, $newStatus);
-        
+
         return $this->createNotification(
             $exeatRequest,
             $recipients,
@@ -90,10 +100,10 @@ class ExeatNotificationService
         string $role
     ): Collection {
         $recipients = $this->getApprovalRecipients($exeatRequest, $role);
-        
+
         $title = "Exeat Approval Required";
         $message = $this->buildApprovalRequiredMessage($exeatRequest, $role);
-        
+
         return $this->createNotification(
             $exeatRequest,
             $recipients,
@@ -113,10 +123,10 @@ class ExeatNotificationService
         array $customRecipients = null
     ): Collection {
         $recipients = $customRecipients ?? $this->getReminderRecipients($exeatRequest, $reminderType);
-        
+
         $title = "Exeat Reminder";
         $message = $this->buildReminderMessage($exeatRequest, $reminderType);
-        
+
         return $this->createNotification(
             $exeatRequest,
             $recipients,
@@ -136,9 +146,9 @@ class ExeatNotificationService
         array $customRecipients = null
     ): Collection {
         $recipients = $customRecipients ?? $this->getEmergencyRecipients($exeatRequest);
-        
+
         $title = "URGENT: Exeat Emergency";
-        
+
         return $this->createNotification(
             $exeatRequest,
             $recipients,
@@ -155,43 +165,43 @@ class ExeatNotificationService
     protected function getStageChangeRecipients(ExeatRequest $exeatRequest, string $newStatus): array
     {
         $recipients = [];
-        
+
         // Always notify the student
         $recipients[] = [
             'type' => ExeatNotification::RECIPIENT_STUDENT,
             'id' => $exeatRequest->student_id
         ];
-        
+
         // Notify relevant staff based on new status
         switch ($newStatus) {
             case 'cmd_review':
                 $recipients = array_merge($recipients, $this->getCMDStaff());
                 break;
-                
+
             case 'deputy-dean_review':
                 $recipients = array_merge($recipients, $this->getDeputyDeanStaff());
                 break;
-                
+
             case 'parent_consent':
                 // Parents do not receive notifications - removed parent recipients
                 break;
-                
+
             case 'dean_review':
                 $recipients = array_merge($recipients, $this->getDeanStaff());
                 break;
-                
+
             case 'hostel_signout':
                 $recipients = array_merge($recipients, $this->getHostelStaff($exeatRequest));
                 break;
-                
+
             case 'security_signout':
                 $recipients = array_merge($recipients, $this->getSecurityStaff());
                 break;
         }
-        
+
         // Always notify admins
         $recipients = array_merge($recipients, $this->getAdminStaff());
-        
+
         return $recipients;
     }
 
@@ -253,22 +263,6 @@ class ExeatNotificationService
     }
 
     /**
-     * Get delivery methods for a recipient.
-     */
-    protected function getDeliveryMethods(string $recipientType, int $recipientId, string $notificationType, string $priority): array
-    {
-        $preferences = $this->preferenceService->getUserPreferences($recipientType, $recipientId);
-        
-        if (!$preferences) {
-            // Default delivery methods
-            return ['in_app', 'email'];
-        }
-        
-        $isUrgent = $priority === ExeatNotification::PRIORITY_URGENT;
-        return $preferences->getActiveDeliveryMethods($isUrgent);
-    }
-
-    /**
      * Build stage change message.
      */
     protected function buildStageChangeMessage(ExeatRequest $exeatRequest, string $oldStatus, string $newStatus): string
@@ -289,11 +283,23 @@ class ExeatNotificationService
             'hostel_signin' => 'Hostel Sign-in',
             'completed' => 'Completed'
         ];
-        
+
+        $studentInfo = '';
+        if ($student) {
+            $studentInfo = sprintf(
+                "%s %s (Matric: %s)",
+                $student->fname ?? '',
+                $student->lname ?? '',
+                $exeatRequest->matric_no ?? 'N/A'
+            );
+        } else {
+            $studentInfo = 'Student (ID: ' . $exeatRequest->student_id . ')';
+        }
+
         return sprintf(
             "Exeat request #%s for %s has been updated from '%s' to '%s'. Please check your dashboard for details.",
             $exeatRequest->id,
-            $student->full_name ?? 'Student',
+            $studentInfo,
             $statusMap[$oldStatus] ?? $oldStatus,
             $statusMap[$newStatus] ?? $newStatus
         );
@@ -312,11 +318,23 @@ class ExeatNotificationService
             'hostel_admin' => 'Hostel Administrator',
             'security' => 'Security'
         ];
-        
+
+        $studentInfo = '';
+        if ($student) {
+            $studentInfo = sprintf(
+                "%s %s (Matric: %s)",
+                $student->fname ?? '',
+                $student->lname ?? '',
+                $exeatRequest->matric_no ?? 'N/A'
+            );
+        } else {
+            $studentInfo = 'Student (ID: ' . $exeatRequest->student_id . ')';
+        }
+
         return sprintf(
             "Exeat request #%s for %s requires your approval as %s. Please review and take action.",
             $exeatRequest->id,
-            $student->full_name ?? 'Student',
+            $studentInfo,
             $roleMap[$role] ?? $role
         );
     }
@@ -327,7 +345,7 @@ class ExeatNotificationService
     protected function buildReminderMessage(ExeatRequest $exeatRequest, string $reminderType): string
     {
         $student = $exeatRequest->student;
-        
+
         switch ($reminderType) {
             case 'parent_consent_pending':
                 return sprintf(
@@ -358,8 +376,8 @@ class ExeatNotificationService
     // Helper methods to get staff by role
     protected function getCMDStaff(): array
     {
-        return Staff::whereHas('exeatRoles', function ($query) {
-            $query->where('role', 'cmd');
+        return Staff::whereHas('exeat_roles', function ($query) {
+            $query->where('name', 'cmd');
         })->get()->map(function ($staff) {
             return [
                 'type' => ExeatNotification::RECIPIENT_STAFF,
@@ -370,8 +388,8 @@ class ExeatNotificationService
 
     protected function getDeputyDeanStaff(): array
     {
-        return Staff::whereHas('exeatRoles', function ($query) {
-            $query->where('role', 'deputy_dean');
+        return Staff::whereHas('exeat_roles', function ($query) {
+            $query->where('name', 'deputy_dean');
         })->get()->map(function ($staff) {
             return [
                 'type' => ExeatNotification::RECIPIENT_STAFF,
@@ -382,8 +400,8 @@ class ExeatNotificationService
 
     protected function getDeanStaff(): array
     {
-        return Staff::whereHas('exeatRoles', function ($query) {
-            $query->where('role', 'dean');
+        return Staff::whereHas('exeat_roles', function ($query) {
+            $query->where('name', 'dean');
         })->get()->map(function ($staff) {
             return [
                 'type' => ExeatNotification::RECIPIENT_STAFF,
@@ -395,8 +413,8 @@ class ExeatNotificationService
     protected function getHostelStaff(ExeatRequest $exeatRequest): array
     {
         // Get hostel admin for the student's hostel
-        return Staff::whereHas('exeatRoles', function ($query) {
-            $query->where('role', 'hostel_admin');
+        return Staff::whereHas('exeat_roles', function ($query) {
+            $query->where('name', 'hostel_admin');
         })->get()->map(function ($staff) {
             return [
                 'type' => ExeatNotification::RECIPIENT_STAFF,
@@ -407,8 +425,8 @@ class ExeatNotificationService
 
     protected function getSecurityStaff(): array
     {
-        return Staff::whereHas('exeatRoles', function ($query) {
-            $query->where('role', 'security');
+        return Staff::whereHas('exeat_roles', function ($query) {
+            $query->where('name', 'security');
         })->get()->map(function ($staff) {
             return [
                 'type' => ExeatNotification::RECIPIENT_STAFF,
@@ -419,8 +437,8 @@ class ExeatNotificationService
 
     protected function getAdminStaff(): array
     {
-        return Staff::whereHas('exeatRoles', function ($query) {
-            $query->where('role', 'admin');
+        return Staff::whereHas('exeat_roles', function ($query) {
+            $query->where('name', 'admin');
         })->get()->map(function ($staff) {
             return [
                 'type' => ExeatNotification::RECIPIENT_STAFF,
@@ -438,11 +456,11 @@ class ExeatNotificationService
     {
         $query = ExeatNotification::forRecipient($recipientType, $recipientId)
             ->where('is_read', false);
-        
+
         if ($notificationIds) {
             $query->whereIn('id', $notificationIds);
         }
-        
+
         return $query->update([
             'is_read' => true,
             'read_at' => now()
@@ -473,16 +491,16 @@ class ExeatNotificationService
         $query = ExeatNotification::forRecipient($recipientType, $recipientId)
             ->with(['exeatRequest.student'])
             ->orderBy('created_at', 'desc');
-        
+
         // Apply filters
         if (isset($filters['type'])) {
             $query->ofType($filters['type']);
         }
-        
+
         if (isset($filters['priority'])) {
             $query->withPriority($filters['priority']);
         }
-        
+
         if (isset($filters['read_status'])) {
             if ($filters['read_status'] === 'unread') {
                 $query->unread();
@@ -490,11 +508,83 @@ class ExeatNotificationService
                 $query->read();
             }
         }
-        
+
         if (isset($filters['exeat_id'])) {
             $query->where('exeat_request_id', $filters['exeat_id']);
         }
-        
+
         return $query->paginate($perPage);
+    }
+
+    /**
+     * Send submission confirmation to student.
+     */
+    public function sendSubmissionConfirmation(ExeatRequest $exeatRequest): void
+    {
+        $student = $exeatRequest->student;
+        $recipients = [[
+            'type' => ExeatNotification::RECIPIENT_STUDENT,
+            'id' => $exeatRequest->student_id
+        ]];
+
+        $studentName = $student ? "{$student->fname} {$student->lname}" : 'Student';
+        $title = 'Exeat Request Submitted Successfully';
+        $message = sprintf(
+            "Dear %s,\n\nYour exeat request has been submitted successfully and is now under review.\n\nRequest Details:\n- Reason: %s\n- Destination: %s\n- Departure Date: %s\n- Return Date: %s\n- Current Status: %s\n\nYou will receive notifications as your request progresses through the approval stages.\n\nThank you.",
+            $studentName,
+            $exeatRequest->reason,
+            $exeatRequest->destination,
+            \Carbon\Carbon::parse($exeatRequest->departure_date)->format('M d, Y'),
+            \Carbon\Carbon::parse($exeatRequest->return_date)->format('M d, Y'),
+            str_replace('_', ' ', ucwords($exeatRequest->status, '_'))
+        );
+
+        $this->createNotification(
+            $exeatRequest,
+            $recipients,
+            ExeatNotification::TYPE_REQUEST_SUBMITTED,
+            $title,
+            $message,
+            ExeatNotification::PRIORITY_MEDIUM
+        );
+    }
+
+    /**
+     * Send rejection notification to student.
+     */
+    public function sendRejectionNotification(ExeatRequest $exeatRequest, ?string $comment = null): void
+    {
+        $student = $exeatRequest->student;
+        $recipients = [[
+            'type' => ExeatNotification::RECIPIENT_STUDENT,
+            'id' => $exeatRequest->student_id
+        ]];
+
+        $studentName = $student ? "{$student->fname} {$student->lname}" : 'Student';
+        $title = 'Exeat Request Rejected';
+
+        $message = sprintf(
+            "Dear %s,\n\nWe regret to inform you that your exeat request has been rejected.\n\nRequest Details:\n- Reason: %s\n- Destination: %s\n- Departure Date: %s\n- Return Date: %s",
+            $studentName,
+            $exeatRequest->reason,
+            $exeatRequest->destination,
+            \Carbon\Carbon::parse($exeatRequest->departure_date)->format('M d, Y'),
+            \Carbon\Carbon::parse($exeatRequest->return_date)->format('M d, Y')
+        );
+
+        if ($comment) {
+            $message .= "\n\nReason for rejection: {$comment}";
+        }
+
+        $message .= "\n\nIf you have any questions, please contact the appropriate office for clarification.\n\nThank you.";
+
+        $this->createNotification(
+            $exeatRequest,
+            $recipients,
+            ExeatNotification::TYPE_REJECTION,
+            $title,
+            $message,
+            ExeatNotification::PRIORITY_HIGH
+        );
     }
 }

@@ -1,5 +1,7 @@
 # Veritas University Backend API Documentation
 
+This comprehensive guide documents all APIs in the exeat system, including endpoints, parameters, responses, and usage examples.
+
 ## Table of Contents
 1. [Project Overview](#project-overview)
 2. [Architecture & Technology Stack](#architecture--technology-stack)
@@ -10,6 +12,92 @@
 7. [Services](#services)
 8. [Testing Guide](#testing-guide)
 9. [API Status Analysis](#api-status-analysis)
+10. [Authentication APIs](#authentication-apis)
+11. [Student Exeat APIs](#student-exeat-apis)
+12. [Staff Exeat APIs](#staff-exeat-apis)
+13. [Notification APIs](#notification-apis)
+14. [Admin/Dean APIs](#admindean-apis)
+15. [Parent Consent APIs](#parent-consent-apis)
+16. [Hostel & Security APIs](#hostel--security-apis)
+17. [Lookup Data APIs](#lookup-data-apis)
+18. [Analytics APIs](#analytics-apis)
+19. [Error Handling](#error-handling)
+20. [Rate Limiting](#rate-limiting)
+
+## Base URL
+```
+Production: https://your-domain.com/api
+Development: http://localhost:8000/api
+```
+
+## Authentication
+
+All protected endpoints require a Bearer token in the Authorization header:
+```
+Authorization: Bearer {your_token_here}
+```
+
+---
+
+## Authentication APIs
+
+### Login
+**Endpoint:** `POST /auth/login`
+
+**Description:** Authenticate user and receive access token
+
+**Request Body:**
+```json
+{
+    "email": "string (required)",
+    "password": "string (required)"
+}
+```
+
+**Response:**
+```json
+{
+    "success": true,
+    "data": {
+        "user": {
+            "id": 1,
+            "email": "user@example.com",
+            "role": "student"
+        },
+        "token": "eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9...",
+        "expires_at": "2024-02-15T10:30:00Z"
+    }
+}
+```
+
+### Logout
+**Endpoint:** `POST /auth/logout`
+
+**Headers:** `Authorization: Bearer {token}`
+
+**Response:**
+```json
+{
+    "success": true,
+    "message": "Successfully logged out"
+}
+```
+
+### Refresh Token
+**Endpoint:** `POST /auth/refresh`
+
+**Headers:** `Authorization: Bearer {token}`
+
+**Response:**
+```json
+{
+    "success": true,
+    "data": {
+        "token": "new_token_here",
+        "expires_at": "2024-02-15T10:30:00Z"
+    }
+}
+```
 
 ## Project Overview
 

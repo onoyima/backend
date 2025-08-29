@@ -23,3 +23,17 @@ Homestead.json
 Homestead.yaml
 Thumbs.db
 /frontend/
+/database/migrationss/
+EXEAT_API_DOCUMENTATION.md
+EXEAT_TESTING_GUIDE.md
+database_audit.php
+database_model_audit_report.txt
+database_model_comparison.php
+database_schema_output.txt
+database_tables_structure.txt
+model_analysis_output.txt
+model_audit.php
+/resources/views/emails/exeat-notification.blade copy.php
+test_exeat_creation.php
+/database/migrations/2025_08_28_153111_create_exeat_notifications_table.php
+

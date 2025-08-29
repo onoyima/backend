@@ -3,10 +3,10 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\Model;
+use Illuminate\Foundation\Auth\User as Authenticatable;
 use Laravel\Sanctum\HasApiTokens;
 
-class Staff extends Model
+class Staff extends Authenticatable
 {
     use HasApiTokens, HasFactory;
     protected $table = 'staff';
@@ -104,5 +104,10 @@ class Staff extends Model
     public function staffMedicals()
     {
         return $this->hasMany(StaffMedical::class, 'staff_id');
+    }
+
+    public function notifications()
+    {
+        return $this->morphMany(ExeatNotification::class, 'recipient');
     }
 }

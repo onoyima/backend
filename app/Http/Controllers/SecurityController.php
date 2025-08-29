@@ -5,10 +5,22 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use App\Models\SecuritySignout;
 use App\Models\ExeatRequest;
+use App\Services\ExeatNotificationService;
+use App\Services\ExeatWorkflowService;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 
 class SecurityController extends Controller
 {
+    protected $notificationService;
+    protected $workflowService;
+
+    public function __construct(ExeatNotificationService $notificationService, ExeatWorkflowService $workflowService)
+    {
+        $this->notificationService = $notificationService;
+        $this->workflowService = $workflowService;
+        $this->middleware('auth:sanctum');
+    }
     // POST /api/security/validate
     public function validateStudent(Request $request)
     {
@@ -37,35 +49,7 @@ class SecurityController extends Controller
         return response()->json(['message' => 'Student validated.', 'exeat_request' => $exeat]);
     }
 
-    // POST /api/security/signout/{exeat_request_id}
-    public function signOut(Request $request, $exeat_request_id)
-    {
-        $exeat = ExeatRequest::with('student:id,fname,lname,passport')->find($exeat_request_id);
-        if (!$exeat) {
-            return response()->json(['message' => 'Exeat request not found.'], 404);
-        }
-        $signout = SecuritySignout::create([
-            'exeat_request_id' => $exeat->id,
-            'signed_out_at' => now(),
-            'signed_in_at' => null,
-            'security_id' => $request->user()->id,
-        ]);
-        Log::info('Security signed out student at gate', ['exeat_id' => $exeat->id, 'security_id' => $request->user()->id]);
-        return response()->json(['message' => 'Student signed out at gate.', 'signout' => $signout]);
-    }
-
-    // POST /api/security/signin/{exeat_request_id}
-    public function signIn(Request $request, $exeat_request_id)
-    {
-        $signout = SecuritySignout::where('exeat_request_id', $exeat_request_id)
-            ->whereNull('signed_in_at')
-            ->first();
-        if (!$signout) {
-            return response()->json(['message' => 'No active security signout found.'], 404);
-        }
-        $signout->signed_in_at = now();
-        $signout->save();
-        Log::info('Security signed in student at gate', ['exeat_id' => $exeat_request_id, 'security_id' => $request->user()->id]);
-        return response()->json(['message' => 'Student signed in at gate.', 'signin' => $signout]);
-    }
+    // Note: Security signout/signin is now handled through StaffExeatRequestController approve method
+    
+    // Note: Parent notifications are now handled in ExeatWorkflowService
 }

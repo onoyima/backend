@@ -14,9 +14,18 @@ use App\Models\VunaAccomodationHistory;
 use App\Models\VunaAccomodation;
 use App\Models\AuditLog;
 use App\Models\ExeatApproval;
+use App\Services\ExeatNotificationService;
+use App\Models\ExeatNotification;
 
 class StudentExeatRequestController extends Controller
 {
+    protected $notificationService;
+
+    public function __construct(ExeatNotificationService $notificationService)
+    {
+        $this->notificationService = $notificationService;
+        $this->middleware('auth:sanctum');
+    }
     // POST /api/student/exeat-requests
     public function store(Request $request)
     {
@@ -76,22 +85,29 @@ class StudentExeatRequestController extends Controller
         // Create first approval stage
         \App\Models\ExeatApproval::create([
             'exeat_request_id' => $exeat->id,
-            'role' => $isMedical ? 'medical_officer' : 'deputy_dean',
+            'role' => $isMedical ? 'cmd' : 'deputy_dean',
             'status' => 'pending',
         ]);
-        
+
         // Check if request covers weekdays and send notification if needed
         $exeat->checkWeekdaysAndNotify();
-        
-        Log::info('Student created exeat request', ['student_id' => $user->id, 'exeat_id' => $exeat->id]);
+
+        // Send confirmation notification to student
         try {
-            \Mail::raw("Your exeat request has been submitted and is now under review.\n\nReason: {$exeat->reason}\nStatus: {$exeat->status}", function ($msg) use ($user) {
-                $msg->to($user->username) // Use 'username' as email
-                    ->subject('Exeat Request Submitted');
-            });
+            $this->notificationService->sendSubmissionConfirmation($exeat);
         } catch (\Exception $e) {
-            \Log::error('Failed to send initial submission email', ['error' => $e->getMessage()]);
+            Log::error('Failed to send submission confirmation', ['error' => $e->getMessage(), 'exeat_id' => $exeat->id]);
         }
+
+        // Send approval required notification to appropriate staff
+        try {
+            $role = $isMedical ? 'cmd' : 'deputy_dean';
+            $this->notificationService->sendApprovalRequiredNotification($exeat, $role);
+        } catch (\Exception $e) {
+            Log::error('Failed to send approval required notification', ['error' => $e->getMessage(), 'exeat_id' => $exeat->id]);
+        }
+
+        Log::info('Student created exeat request', ['student_id' => $user->id, 'exeat_id' => $exeat->id]);
         return response()->json(['message' => 'Exeat request created successfully.', 'exeat_request' => $exeat], 201);
     }
 

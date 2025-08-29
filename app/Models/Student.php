@@ -3,10 +3,10 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
-use Illuminate\Database\Eloquent\Model;
+use Illuminate\Foundation\Auth\User as Authenticatable;
 use Laravel\Sanctum\HasApiTokens;
 
-class Student extends Model
+class Student extends Authenticatable
 {
     use HasApiTokens, HasFactory;
 
@@ -74,5 +74,10 @@ class Student extends Model
     public function exeatRequests()
     {
         return $this->hasMany(ExeatRequest::class, 'student_id');
+    }
+
+    public function notifications()
+    {
+        return $this->morphMany(ExeatNotification::class, 'recipient');
     }
 }

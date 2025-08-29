@@ -15,14 +15,14 @@ use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\CommunicationController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\ChatController;
-use App\Http\Controllers\CommunicationMessageController;
-use App\Http\Controllers\CommunicationApprovalController;
-use App\Http\Controllers\CommunicationAnalyticsController;
+// use App\Http\Controllers\CommunicationApprovalController; // Controller missing
+// use App\Http\Controllers\CommunicationAnalyticsController; // Controller missing
 use App\Http\Controllers\StudentNotificationController;
 use App\Http\Controllers\StaffNotificationController;
 use App\Http\Controllers\AdminNotificationController;
 use App\Http\Controllers\DeanNotificationController;
 use App\Http\Controllers\DeanController;
+use App\Http\Controllers\ExeatHistoryController;
 
 /*
 |--------------------------------------------------------------------------
@@ -200,6 +200,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/notifications/mark-read', [NotificationController::class, 'markAsRead']);
     Route::delete('/notifications/{id}', [NotificationController::class, 'destroy']);
 
+    // Exeat History and Statistics routes
+    Route::get('/staff/exeat-history', [ExeatHistoryController::class, 'getStaffExeatHistory']);
+    Route::get('/exeats/by-status/{status}', [ExeatHistoryController::class, 'getExeatsByStatus']);
+    Route::get('/exeats/statistics', [ExeatHistoryController::class, 'getExeatStatistics']);
+
     // Communication routes
     Route::post('/send-email', [CommunicationController::class, 'sendEmail']);
     Route::post('/send-sms', [CommunicationController::class, 'sendSMS']);
@@ -212,34 +217,34 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Communication Portal routes
     Route::prefix('communication')->group(function () {
-        // Message management routes
-        Route::get('/messages', [CommunicationMessageController::class, 'index']);
-        Route::post('/messages', [CommunicationMessageController::class, 'store']);
-        Route::get('/messages/{id}', [CommunicationMessageController::class, 'show']);
-        Route::put('/messages/{id}', [CommunicationMessageController::class, 'update']);
-        Route::delete('/messages/{id}', [CommunicationMessageController::class, 'destroy']);
-        Route::post('/messages/{id}/send', [CommunicationMessageController::class, 'send']);
-        Route::get('/messages/{id}/statistics', [CommunicationMessageController::class, 'statistics']);
+        // Message management routes (commented out - controller missing)
+        // Route::get('/messages', [CommunicationMessageController::class, 'index']);
+        // Route::post('/messages', [CommunicationMessageController::class, 'store']);
+        // Route::get('/messages/{id}', [CommunicationMessageController::class, 'show']);
+        // Route::put('/messages/{id}', [CommunicationMessageController::class, 'update']);
+        // Route::delete('/messages/{id}', [CommunicationMessageController::class, 'destroy']);
+        // Route::post('/messages/{id}/send', [CommunicationMessageController::class, 'send']);
+        // Route::get('/messages/{id}/statistics', [CommunicationMessageController::class, 'statistics']);
 
-        // Approval workflow routes
-        Route::prefix('approvals')->group(function () {
-            Route::get('/pending', [CommunicationApprovalController::class, 'pendingApprovals']);
-            Route::get('/history', [CommunicationApprovalController::class, 'approvalHistory']);
-            Route::get('/{id}', [CommunicationApprovalController::class, 'show']);
-            Route::post('/{id}/approve', [CommunicationApprovalController::class, 'approve']);
-            Route::post('/{id}/reject', [CommunicationApprovalController::class, 'reject']);
-            Route::post('/bulk-approve', [CommunicationApprovalController::class, 'bulkApprove']);
-            Route::get('/statistics/overview', [CommunicationApprovalController::class, 'statistics']);
-        });
+        // Approval workflow routes (commented out - controller missing)
+        // Route::prefix('approvals')->group(function () {
+        //     Route::get('/pending', [CommunicationApprovalController::class, 'pendingApprovals']);
+        //     Route::get('/history', [CommunicationApprovalController::class, 'approvalHistory']);
+        //     Route::get('/{id}', [CommunicationApprovalController::class, 'show']);
+        //     Route::post('/{id}/approve', [CommunicationApprovalController::class, 'approve']);
+        //     Route::post('/{id}/reject', [CommunicationApprovalController::class, 'reject']);
+        //     Route::post('/bulk-approve', [CommunicationApprovalController::class, 'bulkApprove']);
+        //     Route::get('/statistics/overview', [CommunicationApprovalController::class, 'statistics']);
+        // });
 
-        // Analytics routes (admin only)
-        Route::middleware('role:admin')->prefix('analytics')->group(function () {
-            Route::get('/dashboard', [CommunicationAnalyticsController::class, 'dashboard']);
-            Route::get('/messages', [CommunicationAnalyticsController::class, 'messageAnalytics']);
-            Route::get('/channels', [CommunicationAnalyticsController::class, 'channelAnalytics']);
-            Route::get('/delivery', [CommunicationAnalyticsController::class, 'deliveryAnalytics']);
-            Route::get('/export', [CommunicationAnalyticsController::class, 'export']);
-        });
+        // Analytics routes (admin only) - commented out - controller missing
+        // Route::middleware('role:admin')->prefix('analytics')->group(function () {
+        //     Route::get('/dashboard', [CommunicationAnalyticsController::class, 'dashboard']);
+        //     Route::get('/messages', [CommunicationAnalyticsController::class, 'messageAnalytics']);
+        //     Route::get('/channels', [CommunicationAnalyticsController::class, 'channelAnalytics']);
+        //     Route::get('/delivery', [CommunicationAnalyticsController::class, 'deliveryAnalytics']);
+        //     Route::get('/export', [CommunicationAnalyticsController::class, 'export']);
+        // });
     });
 });
 
