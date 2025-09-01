@@ -6,7 +6,6 @@ use Illuminate\Foundation\Configuration\Middleware;
 use App\Http\Middleware\ApiStatusLogger;
 use App\Http\Middleware\RoleMiddleware;
 use App\Http\Middleware\AdminMiddleware;
-use Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful;
 use Illuminate\Routing\Middleware\SubstituteBindings;
 
 return Application::configure(basePath: dirname(__DIR__))
@@ -18,12 +17,11 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware) {
         $middleware->group('api', [
-            EnsureFrontendRequestsAreStateful::class,
             'throttle:api',
             SubstituteBindings::class,
             ApiStatusLogger::class,
         ]);
-        
+
         // Register route middleware aliases
         $middleware->alias([
             'role' => RoleMiddleware::class,
