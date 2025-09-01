@@ -35,11 +35,19 @@ return [
         ],
     ],
 
-'twilio' => [
-  'sid' => env('TWILIO_SID'),
-  'token' => env('TWILIO_TOKEN'),
-  'sms_from' => env('TWILIO_SMS_FROM'),
-  'whatsapp_from' => env('TWILIO_WHATSAPP_FROM'),
-],
+    'twilio' => [
+        'sid' => env('TWILIO_SID'),
+        'token' => env('TWILIO_TOKEN'),
+        'sms_from' => env('TWILIO_SMS_FROM'),
+        'whatsapp_from' => env('TWILIO_WHATSAPP_FROM'),
+    ],
+
+    'whatsapp' => [
+        'phone_number_id' => env('WHATSAPP_PHONE_NUMBER_ID'),
+        'business_account_id' => env('WHATSAPP_BUSINESS_ACCOUNT_ID'),
+        'token' => env('WHATSAPP_ACCESS_TOKEN'),
+        'api_version' => env('WHATSAPP_API_VERSION', 'v22.0'),
+        'test_number' => env('WHATSAPP_TEST_NUMBER'),
+    ],
 
 ];

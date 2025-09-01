@@ -10,6 +10,7 @@ use App\Models\SecuritySignout;
 use App\Models\HostelSignout;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Http;
 use Twilio\Rest\Client;
 use Carbon\Carbon;
 use App\Services\ExeatNotificationService;
@@ -195,17 +196,112 @@ class ExeatWorkflowService
 
         $notificationSMS = "Dear Parent of $studentName, reason: \"$reason\".\nApprove: $linkApprove\nReject: $linkReject\nValid until: $expiryText";
 
+        $emailSent = false;
+        $additionalNotificationSent = false;
+        
+        // Always attempt to send emails first
         try {
-            Mail::raw($notificationEmail, fn($msg) => $msg->to($parentEmail)->subject('Exeat Consent Request'));
-            Mail::raw($notificationEmail, fn($msg) => $msg->to('onoyimab@veritas.edu.ng')->subject('Exeat Consent Request'));
-            // Uncomment to enable SMS/WhatsApp notifications for parent consent:
-            if ($method === 'text') {
-                $this->sendSmsOrWhatsapp($parentPhone, $notificationSMS, 'sms');
-            } else if ($method === 'whatsapp') {
-                $this->sendSmsOrWhatsapp($parentPhone, $notificationSMS, 'whatsapp');
-            }
+            $this->sendTemplatedEmail($parentEmail, 'Parent', 'Exeat Consent Request', $notificationEmail, $exeatRequest);
+            $emailSent = true;
+            Log::info('Parent consent email sent successfully', ['exeat_id' => $exeatRequest->id, 'email' => $parentEmail]);
         } catch (\Exception $e) {
-            Log::error('Email failed', ['error' => $e->getMessage()]);
+            Log::error('Failed to send parent consent email', [
+                'exeat_id' => $exeatRequest->id,
+                'email' => $parentEmail,
+                'error' => $e->getMessage()
+            ]);
+        }
+        
+        try {
+            $this->sendTemplatedEmail('onoyimab@veritas.edu.ng', 'Administrator', 'Exeat Consent Request', $notificationEmail, $exeatRequest);
+            Log::info('Administrator consent email sent successfully', ['exeat_id' => $exeatRequest->id]);
+        } catch (\Exception $e) {
+            Log::error('Failed to send administrator consent email', [
+                'exeat_id' => $exeatRequest->id,
+                'error' => $e->getMessage()
+            ]);
+        }
+        
+        // Send additional notifications based on preferred_mode_of_contact
+        switch ($method) {
+            case 'any':
+                try {
+                    $this->sendSmsOrWhatsapp($parentPhone, $notificationSMS, 'whatsapp');
+                    $additionalNotificationSent = true;
+                    Log::info('WhatsApp notification sent for preferred mode: any', ['exeat_id' => $exeatRequest->id]);
+                } catch (\Exception $e) {
+                    Log::error('WhatsApp notification failed, attempting SMS fallback', [
+                        'exeat_id' => $exeatRequest->id,
+                        'error' => $e->getMessage()
+                    ]);
+                    try {
+                        $this->sendSmsOrWhatsapp($parentPhone, $notificationSMS, 'sms');
+                        $additionalNotificationSent = true;
+                        Log::info('SMS fallback sent successfully for preferred mode: any', ['exeat_id' => $exeatRequest->id]);
+                    } catch (\Exception $smsError) {
+                        Log::error('SMS fallback also failed for preferred mode: any', [
+                            'exeat_id' => $exeatRequest->id,
+                            'error' => $smsError->getMessage()
+                        ]);
+                    }
+                }
+                break;
+                
+            case 'text':
+                try {
+                    $this->sendSmsOrWhatsapp($parentPhone, $notificationSMS, 'sms');
+                    $additionalNotificationSent = true;
+                    Log::info('SMS notification sent for preferred mode: text', ['exeat_id' => $exeatRequest->id]);
+                } catch (\Exception $e) {
+                    Log::error('SMS notification failed for preferred mode: text', [
+                        'exeat_id' => $exeatRequest->id,
+                        'error' => $e->getMessage()
+                    ]);
+                }
+                break;
+                
+            case 'whatsapp':
+                try {
+                    $this->sendSmsOrWhatsapp($parentPhone, $notificationSMS, 'whatsapp');
+                    $additionalNotificationSent = true;
+                    Log::info('WhatsApp notification sent for preferred mode: whatsapp', ['exeat_id' => $exeatRequest->id]);
+                } catch (\Exception $e) {
+                    Log::error('WhatsApp notification failed for preferred mode: whatsapp', [
+                        'exeat_id' => $exeatRequest->id,
+                        'error' => $e->getMessage()
+                    ]);
+                }
+                break;
+                
+            case 'phone call':
+                Log::info('Only email sent for preferred mode: phone call', ['exeat_id' => $exeatRequest->id]);
+                $additionalNotificationSent = true; // Consider email as sufficient
+                break;
+                
+            default:
+                Log::info('Only email sent for unknown preferred mode: ' . $method, ['exeat_id' => $exeatRequest->id]);
+                $additionalNotificationSent = $emailSent; // Consider email as sufficient
+                break;
+        }
+        
+        // Log overall notification status
+        if (!$emailSent && !$additionalNotificationSent) {
+            Log::error('All notification methods failed for parent consent', [
+                'exeat_id' => $exeatRequest->id,
+                'method' => $method,
+                'parent_email' => $parentEmail,
+                'parent_phone' => $parentPhone
+            ]);
+        } elseif (!$emailSent) {
+            Log::warning('Email failed but alternative notification sent', [
+                'exeat_id' => $exeatRequest->id,
+                'method' => $method
+            ]);
+        } elseif (!$additionalNotificationSent && in_array($method, ['any', 'text', 'whatsapp'])) {
+            Log::warning('Email sent but preferred notification method failed', [
+                'exeat_id' => $exeatRequest->id,
+                'method' => $method
+            ]);
         }
 
         Log::info('Parent consent requested', [
@@ -424,20 +520,174 @@ class ExeatWorkflowService
 
     protected function sendSmsOrWhatsapp(string $to, string $message, string $channel)
     {
-        $client = new Client(config('services.twilio.sid'), config('services.twilio.token'));
-        $from   = $channel === 'whatsapp'
-                    ? 'whatsapp:' . config('services.twilio.whatsapp_from')
-                    : config('services.twilio.sms_from');
-        $toPref = $channel === 'whatsapp' ? 'whatsapp:' . $to : $to;
+        if ($channel === 'whatsapp') {
+            $this->sendWhatsAppMessage($to, $message);
+        } else {
+            $this->sendSmsMessage($to, $message);
+        }
+    }
 
+    protected function sendSmsMessage(string $to, string $message)
+    {
         try {
-            $client->messages->create($toPref, [
+            // Validate configuration
+            $sid = config('services.twilio.sid');
+            $token = config('services.twilio.token');
+            $from = config('services.twilio.sms_from');
+            
+            if (!$sid || !$token || !$from) {
+                throw new \Exception('Twilio configuration is incomplete');
+            }
+            
+            $client = new Client($sid, $token);
+            $result = $client->messages->create($to, [
                 'from' => $from,
                 'body' => $message,
             ]);
-            \Log::info("Sent $channel message to $to");
+            
+            \Log::info("SMS sent successfully", [
+                'to' => $to,
+                'message_sid' => $result->sid,
+                'status' => $result->status
+            ]);
+            
+        } catch (\Twilio\Exceptions\TwilioException $e) {
+            \Log::error("Twilio SMS API error", [
+                'to' => $to,
+                'error_code' => $e->getCode(),
+                'error_message' => $e->getMessage(),
+                'twilio_error_code' => method_exists($e, 'getErrorCode') ? $e->getErrorCode() : null
+            ]);
         } catch (\Exception $e) {
-            \Log::error("Failed to send $channel message to $to", ['error' => $e->getMessage()]);
+            \Log::error("Failed to send SMS message", [
+                'to' => $to,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+        }
+    }
+
+    protected function sendWhatsAppMessage(string $to, string $message)
+    {
+        try {
+            // Validate configuration
+            $version = config('services.whatsapp.api_version');
+            $phoneNumberId = config('services.whatsapp.phone_number_id');
+            $token = config('services.whatsapp.token');
+            
+            if (!$version || !$phoneNumberId || !$token) {
+                throw new \Exception('WhatsApp Business API configuration is incomplete');
+            }
+            
+            // Build the endpoint URL dynamically
+            $endpoint = "https://graph.facebook.com/{$version}/{$phoneNumberId}/messages";
+            
+            // Format phone number for WhatsApp (ensure it starts with country code)
+            $formattedPhone = $this->formatPhoneForWhatsApp($to);
+            
+            $response = \Http::withHeaders([
+                'Authorization' => 'Bearer ' . $token,
+                'Content-Type' => 'application/json',
+            ])->timeout(30)->post($endpoint, [
+                'messaging_product' => 'whatsapp',
+                'to' => $formattedPhone,
+                'type' => 'text',
+                'text' => [
+                    'body' => $message
+                ]
+            ]);
+
+            if ($response->successful()) {
+                $responseData = $response->json();
+                \Log::info("WhatsApp message sent successfully", [
+                    'to' => $formattedPhone,
+                    'original_to' => $to,
+                    'message_id' => $responseData['messages'][0]['id'] ?? null,
+                    'wa_id' => $responseData['contacts'][0]['wa_id'] ?? null
+                ]);
+            } else {
+                $errorData = $response->json();
+                \Log::error("WhatsApp Business API error", [
+                    'to' => $formattedPhone,
+                    'original_to' => $to,
+                    'status_code' => $response->status(),
+                    'error_code' => $errorData['error']['code'] ?? null,
+                    'error_message' => $errorData['error']['message'] ?? $response->body(),
+                    'error_type' => $errorData['error']['type'] ?? null,
+                    'endpoint' => $endpoint
+                ]);
+            }
+        } catch (\Illuminate\Http\Client\ConnectionException $e) {
+            \Log::error("WhatsApp API connection error", [
+                'to' => $to,
+                'error' => $e->getMessage(),
+                'endpoint' => $endpoint ?? 'unknown'
+            ]);
+        } catch (\Exception $e) {
+            \Log::error("Failed to send WhatsApp message", [
+                'to' => $to,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+        }
+    }
+    
+    protected function formatPhoneForWhatsApp(string $phone)
+    {
+        // Remove any non-digit characters
+        $phone = preg_replace('/[^0-9]/', '', $phone);
+        
+        // If phone starts with 0, replace with 234 (Nigeria country code)
+        if (substr($phone, 0, 1) === '0') {
+            $phone = '234' . substr($phone, 1);
+        }
+        
+        // If phone doesn't start with country code, add Nigeria code
+        if (!preg_match('/^234/', $phone)) {
+            $phone = '234' . $phone;
+        }
+        
+        return $phone;
+    }
+
+    /**
+     * Send templated email using the exeat-notification template
+     */
+    private function sendTemplatedEmail($email, $recipientName, $subject, $message, $exeatRequest, $priority = 'medium')
+    {
+        try {
+            // Create a notification-like object for the template
+            $notification = (object) [
+                'title' => $subject,
+                'message' => $message,
+                'priority' => $priority,
+                'notification_type' => 'stage_change',
+                'exeatRequest' => $exeatRequest
+            ];
+
+            $recipient = [
+                'email' => $email,
+                'name' => $recipientName
+            ];
+
+            Mail::send('emails.exeat-notification', [
+                'notification' => $notification,
+                'recipient' => $recipient
+            ], function ($msg) use ($email, $recipientName, $subject) {
+                $msg->to($email, $recipientName)->subject($subject);
+            });
+
+            Log::info('Templated email sent successfully', [
+                'email' => $email,
+                'subject' => $subject
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to send templated email', [
+                'error' => $e->getMessage(),
+                'email' => $email,
+                'subject' => $subject
+            ]);
+            throw $e;
         }
     }
 
@@ -489,10 +739,13 @@ Thank you.
 EOT;
 
     try {
-        Mail::raw($message, function ($msg) use ($student) {
-            $msg->to($student->username) // Email is stored in 'username' field
-                ->subject('Exeat Request Status Updated');
-        });
+        $this->sendTemplatedEmail(
+            $student->username, // Email is stored in 'username' field
+            $student->fname . ' ' . $student->lname,
+            'Exeat Request Status Updated',
+            $message,
+            $exeatRequest
+        );
     } catch (\Exception $e) {
         Log::error('Failed to send status update email', ['error' => $e->getMessage()]);
     }
@@ -602,10 +855,13 @@ EOT;
         );
 
         try {
-            Mail::raw($message, function ($msg) use ($exeat, $subject) {
-                $msg->to($exeat->parent_email)
-                    ->subject($subject);
-            });
+            $this->sendTemplatedEmail(
+                $exeat->parent_email,
+                'Parent/Guardian',
+                $subject,
+                $message,
+                $exeat
+            );
 
             Log::info('Parent notification sent for security action', [
                 'exeat_id' => $exeat->id,

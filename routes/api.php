@@ -54,7 +54,7 @@ Route::middleware('auth:sanctum')->group(function () {
       // ✅ ADD THESE TWO ROUTES:
         Route::get('/exeat-categories', [StudentExeatRequestController::class, 'categories']);
         Route::get('/profile', [StudentExeatRequestController::class, 'profile']);
-        
+
         // Student notification routes
         Route::prefix('notifications')->group(function () {
             Route::get('/', [StudentNotificationController::class, 'index']);
@@ -80,7 +80,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/exeat-requests/{id}/send-parent-consent', [StaffExeatRequestController::class, 'sendParentConsent']);
         Route::get('/exeat-requests/{id}/history', [StaffExeatRequestController::class, 'history']);
         Route::get('/exeat-requests/role-history', [StaffExeatRequestController::class, 'roleHistory']);
-        
+
         // Staff notification routes
         Route::prefix('notifications')->group(function () {
             Route::get('/', [StaffNotificationController::class, 'index']);
@@ -105,7 +105,7 @@ Route::middleware('auth:sanctum')->group(function () {
     });
 
     // Admin routes
-    
+
  Route::middleware(['role:admin'])->prefix('admin')->group(function () {
     Route::get('/roles', [AdminRoleController::class, 'index']);
     Route::post('/roles', [AdminRoleController::class, 'store']);
@@ -120,7 +120,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/staff/{id}', [AdminStaffController::class, 'destroy']);
     Route::post('/staff/{id}/assign-exeat-role', [AdminStaffController::class, 'assignExeatRole']);
     Route::delete('/staff/{id}/unassign-exeat-role', [AdminStaffController::class, 'unassignExeatRole']);
-    
+
     // Admin notification routes
     Route::prefix('notifications')->group(function () {
         Route::get('/', [AdminNotificationController::class, 'index']);
@@ -140,7 +140,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::middleware('role:dean')->group(function () {
         Route::get('/dean/dashboard', [StaffExeatRequestController::class, 'deanDashboard']);
         Route::get('/dean/exeat-requests', [StaffExeatRequestController::class, 'deanRequests']);
-        
+
         // Dean notification routes
         Route::prefix('dean/notifications')->group(function () {
             Route::get('/', [DeanNotificationController::class, 'index']);
@@ -157,7 +157,7 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::get('/{id}', [DeanNotificationController::class, 'show']);
             Route::get('/exeat/{exeatId}', [DeanNotificationController::class, 'getExeatNotifications']);
         });
-        
+
         // Deputy Dean parent consent routes
         Route::prefix('staff/parent-consents')->group(function () {
             Route::get('/pending', [StaffExeatRequestController::class, 'getPendingParentConsents']);

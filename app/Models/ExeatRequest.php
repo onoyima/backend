@@ -28,8 +28,20 @@ class ExeatRequest extends Model
         'student_accommodation',
         'status',
         'is_medical',
+        'is_expired',
+        'expired_at',
         'created_at',
         'updated_at',
+    ];
+
+    protected $casts = [
+        'departure_date' => 'date',
+        'return_date' => 'date',
+        'is_medical' => 'boolean',
+        'is_expired' => 'boolean',
+        'expired_at' => 'datetime',
+        'created_at' => 'datetime',
+        'updated_at' => 'datetime',
     ];
 
     // Relationships (unchanged) ...
@@ -150,6 +162,65 @@ class ExeatRequest extends Model
                 'error' => $e->getMessage()
             ]);
         }
+    }
+
+    /**
+     * Scope to get only expired exeat requests
+     */
+    public function scopeExpired($query)
+    {
+        return $query->where('is_expired', true);
+    }
+
+    /**
+     * Scope to get only non-expired exeat requests
+     */
+    public function scopeNotExpired($query)
+    {
+        return $query->where('is_expired', false);
+    }
+
+    /**
+     * Scope to get overdue exeat requests (past return date but not expired yet)
+     */
+    public function scopeOverdue($query)
+    {
+        return $query->where('return_date', '<', now()->toDateString())
+                    ->where('is_expired', false)
+                    ->whereNotIn('status', ['security_signin', 'hostel_signin', 'completed', 'rejected']);
+    }
+
+    /**
+     * Check if the exeat request is overdue
+     */
+    public function isOverdue()
+    {
+        return $this->return_date < now()->toDateString() 
+               && !$this->is_expired 
+               && !in_array($this->status, ['security_signin', 'hostel_signin', 'completed', 'rejected']);
+    }
+
+    /**
+     * Mark the exeat request as expired
+     */
+    public function markAsExpired()
+    {
+        return $this->update([
+            'is_expired' => true,
+            'expired_at' => now(),
+            'status' => 'completed'
+        ]);
+    }
+
+    /**
+     * Get the status display with expired indicator
+     */
+    public function getStatusDisplayAttribute()
+    {
+        if ($this->is_expired) {
+            return $this->status . ' (Expired)';
+        }
+        return $this->status;
     }
 }
 
