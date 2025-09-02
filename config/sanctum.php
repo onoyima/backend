@@ -21,7 +21,7 @@ return [
     | Keep "sanctum" so your `auth:sanctum` middleware works.
     |
     */
-    'guard' => ['sanctum'],
+    'guard' => ['web'],
 
     /*
     |--------------------------------------------------------------------------

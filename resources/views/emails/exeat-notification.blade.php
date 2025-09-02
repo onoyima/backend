@@ -113,6 +113,63 @@
         user-select: none;
     }
 
+    /* Button styles for parent consent */
+    .consent-buttons {
+        text-align: center;
+        margin: 30px 0;
+        padding: 25px;
+        background-color: #ffffff;
+        border-radius: 8px;
+        border: 1px solid #004f40;
+    }
+
+    .consent-button {
+        display: inline-block;
+        padding: 15px 30px;
+        margin: 0 10px;
+        text-decoration: none;
+        border-radius: 6px;
+        font-weight: bold;
+        font-size: 16px;
+        text-align: center;
+        min-width: 120px;
+        transition: all 0.3s ease;
+        border: 2px solid transparent;
+    }
+
+    .approve-button {
+        background-color: #2e7d32;
+        color: #ffffff;
+        border-color: #2e7d32;
+    }
+
+    .approve-button:hover {
+        background-color: #1b5e20;
+        border-color: #1b5e20;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(46, 125, 50, 0.3);
+    }
+
+    .reject-button {
+        background-color: #d32f2f;
+        color: #ffffff;
+        border-color: #d32f2f;
+    }
+
+    .reject-button:hover {
+        background-color: #b71c1c;
+        border-color: #b71c1c;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(211, 47, 47, 0.3);
+    }
+
+    .consent-note {
+        margin-top: 20px;
+        font-size: 14px;
+        color: #666;
+        font-style: italic;
+    }
+
     /* Responsive */
     @media only screen and (max-width: 620px) {
         body {
@@ -125,6 +182,11 @@
             width: 100%;
             display: block;
             margin-bottom: 3px;
+        }
+        .consent-button {
+            display: block;
+            margin: 10px auto;
+            width: 80%;
         }
     }
 </style>
@@ -191,6 +253,21 @@
             @if($notification->notification_type === 'approval_required')
             <div class="action-required">
                 <p><strong>Action Required:</strong> Please log in to the system to review and take action on this exeat request.</p>
+            </div>
+            @endif
+
+            @if(isset($approveUrl) && isset($rejectUrl))
+            <div class="consent-buttons">
+                <h3 style="margin-top: 0; color: #004f40; text-align: center;">Parent Consent Required</h3>
+                <p style="text-align: center; margin-bottom: 25px; color: #004f40;">Please click one of the buttons below to give your consent:</p>
+                
+                <a href="{{ $approveUrl }}" class="consent-button approve-button">✓ APPROVE</a>
+                <a href="{{ $rejectUrl }}" class="consent-button reject-button">✗ REJECT</a>
+                
+                <div class="consent-note">
+                    <p>By clicking approve, you give consent for your child to proceed with this exeat request.</p>
+                    <p>By clicking reject, you deny consent for this exeat request.</p>
+                </div>
             </div>
             @endif
 

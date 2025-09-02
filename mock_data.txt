@@ -1,0 +1,937 @@
+Mock Data Storage - 2025-09-02 05:54:01
+==================================================
+
+[LOGIN] 05:54:01
+{
+    "status": "success",
+    "token": "student_token_291",
+    "user": {
+        "id": 1,
+        "name": "John Doe",
+        "email": "student1@school.edu",
+        "role": "student"
+    }
+}
+--------------------
+
+[GET_PROFILE] 05:54:01
+{
+    "status": "success",
+    "user": {
+        "id": 1,
+        "email": "student1@school.edu",
+        "password": "password123",
+        "role": "student",
+        "name": "John Doe",
+        "student_id": "STU001",
+        "department": "Computer Science",
+        "hostel": "Block A"
+    }
+}
+--------------------
+
+[UPDATE_PROFILE] 05:54:01
+{
+    "status": "success",
+    "message": "Profile updated successfully",
+    "user": {
+        "id": 1,
+        "email": "student1@school.edu",
+        "password": "password123",
+        "role": "student",
+        "name": "John Updated Doe",
+        "student_id": "STU001",
+        "department": "Computer Science",
+        "hostel": "Block A",
+        "phone": "+1234567890"
+    }
+}
+--------------------
+
+[LOGOUT] 05:54:01
+{
+    "status": "success",
+    "message": "Logged out successfully"
+}
+--------------------
+
+[LOGIN] 05:54:01
+{
+    "status": "success",
+    "token": "student_token_480",
+    "user": {
+        "id": 1,
+        "name": "John Doe",
+        "email": "student1@school.edu",
+        "role": "student"
+    }
+}
+--------------------
+
+[STUDENT_PROFILE] 05:54:01
+{
+    "status": "success",
+    "student": {
+        "id": 1,
+        "name": "John Doe",
+        "student_id": "STU001",
+        "department": "Computer Science",
+        "hostel": "Block A",
+        "email": "student1@school.edu"
+    }
+}
+--------------------
+
+[EXEAT_CATEGORIES] 05:54:01
+{
+    "status": "success",
+    "categories": [
+        {
+            "id": 1,
+            "name": "Medical",
+            "requires_medical_approval": true
+        },
+        {
+            "id": 2,
+            "name": "Personal",
+            "requires_medical_approval": false
+        },
+        {
+            "id": 3,
+            "name": "Family Emergency",
+            "requires_medical_approval": false
+        },
+        {
+            "id": 4,
+            "name": "Academic",
+            "requires_medical_approval": false
+        }
+    ]
+}
+--------------------
+
+[STUDENT_EXEAT_REQUESTS] 05:54:01
+{
+    "status": "success",
+    "exeat_requests": [
+        {
+            "id": 1,
+            "student_id": 1,
+            "category_id": 1,
+            "category_name": "Medical",
+            "reason": "Doctor appointment",
+            "start_date": "2024-01-15",
+            "end_date": "2024-01-16",
+            "status": "pending",
+            "created_at": "2024-01-10 10:00:00"
+        },
+        {
+            "id": 2,
+            "student_id": 1,
+            "category_id": 2,
+            "category_name": "Personal",
+            "reason": "Family visit",
+            "start_date": "2024-01-20",
+            "end_date": "2024-01-22",
+            "status": "approved",
+            "created_at": "2024-01-12 14:30:00"
+        }
+    ]
+}
+--------------------
+
+[CREATE_EXEAT_REQUEST] 05:54:01
+{
+    "status": "success",
+    "message": "Exeat request created successfully",
+    "exeat_request": {
+        "id": 313,
+        "student_id": 1,
+        "category_id": 1,
+        "reason": "Medical appointment",
+        "start_date": "2024-01-20",
+        "end_date": "2024-01-21",
+        "status": "pending",
+        "created_at": "2025-09-02 05:54:01"
+    }
+}
+--------------------
+
+[GET_EXEAT_REQUEST] 05:54:01
+{
+    "status": "success",
+    "exeat_request": {
+        "id": "1",
+        "student_id": 1,
+        "category_id": 1,
+        "category_name": "Medical",
+        "reason": "Doctor appointment",
+        "start_date": "2024-01-15",
+        "end_date": "2024-01-16",
+        "status": "pending",
+        "created_at": "2024-01-10 10:00:00",
+        "approvals": [
+            {
+                "role": "staff",
+                "status": "pending",
+                "approved_by": null
+            },
+            {
+                "role": "dean",
+                "status": "pending",
+                "approved_by": null
+            }
+        ]
+    }
+}
+--------------------
+
+[GET_EXEAT_REQUEST] 05:54:01
+{
+    "status": "success",
+    "exeat_request": {
+        "id": "1",
+        "student_id": 1,
+        "category_id": 1,
+        "category_name": "Medical",
+        "reason": "Doctor appointment",
+        "start_date": "2024-01-15",
+        "end_date": "2024-01-16",
+        "status": "pending",
+        "created_at": "2024-01-10 10:00:00",
+        "approvals": [
+            {
+                "role": "staff",
+                "status": "pending",
+                "approved_by": null
+            },
+            {
+                "role": "dean",
+                "status": "pending",
+                "approved_by": null
+            }
+        ]
+    }
+}
+--------------------
+
+[GET_NOTIFICATIONS] 05:54:01
+{
+    "status": "success",
+    "notifications": [
+        {
+            "id": 1,
+            "user_id": 1,
+            "title": "Exeat Request Update",
+            "message": "Your exeat request has been approved by staff",
+            "type": "exeat_update",
+            "read": false,
+            "created_at": "2024-01-11 10:00:00"
+        },
+        {
+            "id": 2,
+            "user_id": 1,
+            "title": "System Notification",
+            "message": "Welcome to the exeat management system",
+            "type": "system",
+            "read": true,
+            "created_at": "2024-01-10 08:00:00"
+        }
+    ]
+}
+--------------------
+
+[UNREAD_COUNT] 05:54:01
+{
+    "status": "success",
+    "unread_count": 2
+}
+--------------------
+
+[MARK_NOTIFICATION_READ] 05:54:01
+{
+    "status": "success",
+    "message": "Notification marked as read",
+    "notification_id": "1"
+}
+--------------------
+
+[LOGIN] 05:54:01
+{
+    "status": "success",
+    "token": "staff_token_310",
+    "user": {
+        "id": 2,
+        "name": "Jane Smith",
+        "email": "staff1@school.edu",
+        "role": "staff"
+    }
+}
+--------------------
+
+[STAFF_DASHBOARD] 05:54:01
+{
+    "status": "success",
+    "dashboard": {
+        "pending_approvals": 6,
+        "approved_today": 4,
+        "rejected_today": 0,
+        "total_requests_this_month": 61
+    }
+}
+--------------------
+
+[STAFF_EXEAT_REQUESTS] 05:54:01
+{
+    "status": "success",
+    "exeat_requests": [
+        {
+            "id": 1,
+            "student_name": "John Doe",
+            "student_id": "STU001",
+            "category": "Medical",
+            "reason": "Doctor appointment",
+            "start_date": "2024-01-15",
+            "end_date": "2024-01-16",
+            "status": "pending",
+            "priority": "high"
+        },
+        {
+            "id": 2,
+            "student_name": "Alice Johnson",
+            "student_id": "STU002",
+            "category": "Personal",
+            "reason": "Family emergency",
+            "start_date": "2024-01-18",
+            "end_date": "2024-01-20",
+            "status": "pending",
+            "priority": "medium"
+        }
+    ]
+}
+--------------------
+
+[APPROVE_EXEAT] 05:54:01
+{
+    "status": "success",
+    "message": "Exeat request approved successfully",
+    "exeat_id": "1",
+    "approved_by": "Jane Smith",
+    "approval_notes": "Approved by staff",
+    "timestamp": "2025-09-02 05:54:01"
+}
+--------------------
+
+[REJECT_EXEAT] 05:54:01
+{
+    "status": "success",
+    "message": "Exeat request rejected",
+    "exeat_id": "2",
+    "rejected_by": "Jane Smith",
+    "rejection_reason": "Insufficient documentation",
+    "timestamp": "2025-09-02 05:54:01"
+}
+--------------------
+
+[SEND_PARENT_CONSENT] 05:54:01
+{
+    "status": "success",
+    "message": "Parent consent request sent",
+    "exeat_id": "1",
+    "consent_token": "consent_2650f799f750994b30f021f2065ab92b",
+    "sent_by": "Jane Smith",
+    "timestamp": "2025-09-02 05:54:01"
+}
+--------------------
+
+[GET_NOTIFICATIONS] 05:54:01
+{
+    "status": "success",
+    "notifications": [
+        {
+            "id": 1,
+            "user_id": 2,
+            "title": "Exeat Request Update",
+            "message": "Your exeat request has been approved by staff",
+            "type": "exeat_update",
+            "read": false,
+            "created_at": "2024-01-11 10:00:00"
+        },
+        {
+            "id": 2,
+            "user_id": 2,
+            "title": "System Notification",
+            "message": "Welcome to the exeat management system",
+            "type": "system",
+            "read": true,
+            "created_at": "2024-01-10 08:00:00"
+        }
+    ]
+}
+--------------------
+
+[SEND_NOTIFICATION_TO_STUDENT] 05:54:01
+{
+    "status": "success",
+    "message": "Notification sent to student",
+    "recipient_id": 1,
+    "notification_type": "request_update",
+    "content": "Please provide additional documentation",
+    "sent_by": "Jane Smith",
+    "timestamp": "2025-09-02 05:54:01"
+}
+--------------------
+
+[LOGIN] 05:54:01
+{
+    "status": "success",
+    "token": "admin_token_549",
+    "user": {
+        "id": 4,
+        "name": "Admin User",
+        "email": "admin@school.edu",
+        "role": "admin"
+    }
+}
+--------------------
+
+[GET_ROLES] 05:54:01
+{
+    "status": "success",
+    "roles": [
+        {
+            "id": 1,
+            "name": "staff",
+            "description": "General staff member"
+        },
+        {
+            "id": 2,
+            "name": "dean",
+            "description": "Dean of students"
+        },
+        {
+            "id": 3,
+            "name": "cmd",
+            "description": "Chief Medical Officer"
+        },
+        {
+            "id": 4,
+            "name": "hostel",
+            "description": "Hostel administrator"
+        },
+        {
+            "id": 5,
+            "name": "security",
+            "description": "Security officer"
+        }
+    ]
+}
+--------------------
+
+[CREATE_ROLE] 05:54:01
+{
+    "status": "success",
+    "message": "Role created successfully",
+    "role": {
+        "id": 455,
+        "name": "deputy_dean",
+        "description": "Deputy Dean of Students",
+        "created_at": "2025-09-02 05:54:01"
+    }
+}
+--------------------
+
+[GET_ALL_STAFF] 05:54:01
+{
+    "status": "success",
+    "staff": [
+        {
+            "id": 2,
+            "email": "staff1@school.edu",
+            "password": "password123",
+            "role": "staff",
+            "name": "Jane Smith",
+            "staff_id": "STF001",
+            "department": "Academic Affairs"
+        },
+        {
+            "id": 3,
+            "email": "dean@school.edu",
+            "password": "password123",
+            "role": "dean",
+            "name": "Dr. Robert Johnson",
+            "staff_id": "STF002"
+        },
+        {
+            "id": 4,
+            "email": "admin@school.edu",
+            "password": "password123",
+            "role": "admin",
+            "name": "Admin User",
+            "staff_id": "STF003"
+        },
+        {
+            "id": 5,
+            "email": "cmd@school.edu",
+            "password": "password123",
+            "role": "cmd",
+            "name": "Dr. Medical Officer",
+            "staff_id": "STF004"
+        },
+        {
+            "id": 6,
+            "email": "hostel@school.edu",
+            "password": "password123",
+            "role": "hostel",
+            "name": "Hostel Admin",
+            "staff_id": "STF005"
+        },
+        {
+            "id": 7,
+            "email": "security@school.edu",
+            "password": "password123",
+            "role": "security",
+            "name": "Security Officer",
+            "staff_id": "STF006"
+        }
+    ]
+}
+--------------------
+
+[CREATE_STAFF] 05:54:01
+{
+    "status": "success",
+    "message": "Staff member created successfully",
+    "staff": {
+        "id": 177,
+        "name": "New Staff Member",
+        "email": "newstaff@school.edu",
+        "role": "staff",
+        "staff_id": "STF157",
+        "department": "Academic Affairs",
+        "created_at": "2025-09-02 05:54:01"
+    }
+}
+--------------------
+
+[ASSIGN_EXEAT_ROLE] 05:54:01
+{
+    "status": "success",
+    "message": "Exeat role assigned successfully",
+    "staff_id": "2",
+    "role_id": 1,
+    "assigned_at": "2025-09-02 05:54:01"
+}
+--------------------
+
+[BULK_SEND_NOTIFICATIONS] 05:54:01
+{
+    "status": "success",
+    "message": "Bulk notifications sent successfully",
+    "recipients_count": 25,
+    "notification_type": "system_announcement",
+    "sent_at": "2025-09-02 05:54:01"
+}
+--------------------
+
+[LOGIN] 05:54:01
+{
+    "status": "success",
+    "token": "dean_token_827",
+    "user": {
+        "id": 3,
+        "name": "Dr. Robert Johnson",
+        "email": "dean@school.edu",
+        "role": "dean"
+    }
+}
+--------------------
+
+[DEAN_DASHBOARD] 05:54:01
+{
+    "status": "success",
+    "dashboard": {
+        "pending_dean_approvals": 10,
+        "approved_this_week": 24,
+        "rejected_this_week": 2,
+        "medical_exeats_pending": 3
+    }
+}
+--------------------
+
+[DEAN_EXEAT_REQUESTS] 05:54:01
+{
+    "status": "success",
+    "exeat_requests": [
+        {
+            "id": 1,
+            "student_name": "John Doe",
+            "category": "Medical",
+            "reason": "Surgery appointment",
+            "status": "awaiting_dean_approval",
+            "priority": "high",
+            "staff_approved": true
+        }
+    ]
+}
+--------------------
+
+[DEAN_SEND_NOTIFICATIONS] 05:54:01
+{
+    "status": "success",
+    "message": "Dean notification sent to students",
+    "recipients": "all_students",
+    "notification_content": "Important announcement from Dean",
+    "sent_by": "Dr. Robert Johnson",
+    "timestamp": "2025-09-02 05:54:01"
+}
+--------------------
+
+[LOGIN] 05:54:01
+{
+    "status": "success",
+    "token": "cmd_token_768",
+    "user": {
+        "id": 5,
+        "name": "Dr. Medical Officer",
+        "email": "cmd@school.edu",
+        "role": "cmd"
+    }
+}
+--------------------
+
+[CMD_DASHBOARD] 05:54:01
+{
+    "status": "success",
+    "dashboard": {
+        "medical_exeats_pending": 7,
+        "medical_approvals_today": 4,
+        "emergency_cases": 1
+    }
+}
+--------------------
+
+[CMD_EXEAT_REQUESTS] 05:54:01
+{
+    "status": "success",
+    "medical_exeat_requests": [
+        {
+            "id": 1,
+            "student_name": "John Doe",
+            "category": "Medical",
+            "reason": "Medical treatment",
+            "medical_priority": "high",
+            "status": "awaiting_medical_approval"
+        }
+    ]
+}
+--------------------
+
+[LOGIN] 05:54:01
+{
+    "status": "success",
+    "token": "hostel_token_909",
+    "user": {
+        "id": 6,
+        "name": "Hostel Admin",
+        "email": "hostel@school.edu",
+        "role": "hostel"
+    }
+}
+--------------------
+
+[HOSTEL_DASHBOARD] 05:54:01
+{
+    "status": "success",
+    "dashboard": {
+        "pending_signouts": 12,
+        "students_out": 27,
+        "overdue_returns": 3
+    }
+}
+--------------------
+
+[HOSTEL_EXEAT_REQUESTS] 05:54:01
+{
+    "status": "success",
+    "signout_requests": [
+        {
+            "id": 1,
+            "student_name": "John Doe",
+            "room_number": "A101",
+            "status": "approved_ready_for_signout",
+            "expected_return": "2024-01-16"
+        }
+    ]
+}
+--------------------
+
+[LOGIN] 05:54:01
+{
+    "status": "success",
+    "token": "security_token_287",
+    "user": {
+        "id": 7,
+        "name": "Security Officer",
+        "email": "security@school.edu",
+        "role": "security"
+    }
+}
+--------------------
+
+[SECURITY_DASHBOARD] 05:54:01
+{
+    "status": "success",
+    "dashboard": {
+        "pending_gate_passes": 5,
+        "students_signed_out": 37,
+        "late_returns": 0
+    }
+}
+--------------------
+
+[SECURITY_EXEAT_REQUESTS] 05:54:01
+{
+    "status": "success",
+    "gate_pass_requests": [
+        {
+            "id": 1,
+            "student_name": "John Doe",
+            "student_id": "STU001",
+            "status": "ready_for_gate_pass",
+            "expected_return": "2024-01-16 18:00:00"
+        }
+    ]
+}
+--------------------
+
+[PARENT_CONSENT_APPROVE] 05:54:01
+{
+    "status": "success",
+    "message": "Parent consent approved",
+    "consent_token": "consent_abc123",
+    "approved_at": "2025-09-02 05:54:01"
+}
+--------------------
+
+[PARENT_CONSENT_DECLINE] 05:54:01
+{
+    "status": "success",
+    "message": "Parent consent declined",
+    "consent_token": "consent_xyz789",
+    "declined_at": "2025-09-02 05:54:01"
+}
+--------------------
+
+[LOGIN] 05:54:01
+{
+    "status": "success",
+    "token": "student_token_736",
+    "user": {
+        "id": 1,
+        "name": "John Doe",
+        "email": "student1@school.edu",
+        "role": "student"
+    }
+}
+--------------------
+
+[GET_CHATS] 05:54:01
+{
+    "status": "success",
+    "chats": [
+        {
+            "id": 1,
+            "participants": [
+                "John Doe",
+                "Jane Smith"
+            ],
+            "last_message": "Hello, how are you?",
+            "last_message_time": "2024-01-15 10:30:00",
+            "unread_count": 2
+        }
+    ]
+}
+--------------------
+
+[CREATE_CHAT] 05:54:01
+{
+    "status": "success",
+    "message": "Chat created successfully",
+    "chat": {
+        "id": 693,
+        "created_by": 1,
+        "participants": [
+            2,
+            3
+        ],
+        "created_at": "2025-09-02 05:54:01"
+    }
+}
+--------------------
+
+[SEND_EMAIL] 05:54:01
+{
+    "status": "success",
+    "message": "Email sent successfully",
+    "recipient": "parent@example.com",
+    "subject": "Exeat Request Notification",
+    "sent_at": "2025-09-02 05:54:01"
+}
+--------------------
+
+[SEND_SMS] 05:54:01
+{
+    "status": "success",
+    "message": "SMS sent successfully",
+    "recipient": "+1234567890",
+    "content": "Exeat request approved. Please check your email.",
+    "sent_at": "2025-09-02 05:54:01"
+}
+--------------------
+
+[LOGIN] 05:54:01
+{
+    "status": "success",
+    "token": "admin_token_125",
+    "user": {
+        "id": 4,
+        "name": "Admin User",
+        "email": "admin@school.edu",
+        "role": "admin"
+    }
+}
+--------------------
+
+[EXEAT_USAGE_ANALYTICS] 05:54:01
+{
+    "status": "success",
+    "analytics": {
+        "total_requests_this_month": 139,
+        "approved_percentage": 78,
+        "most_common_category": "Personal",
+        "average_processing_time": "34 hours"
+    }
+}
+--------------------
+
+[EXEAT_STATISTICS] 05:54:01
+{
+    "status": "success",
+    "statistics": {
+        "total_requests": 937,
+        "approved": 678,
+        "rejected": 67,
+        "pending": 49,
+        "by_category": {
+            "Medical": 152,
+            "Personal": 217,
+            "Academic": 79,
+            "Family Emergency": 78
+        }
+    }
+}
+--------------------
+
+[GET_DEPARTMENTS] 05:54:01
+{
+    "status": "success",
+    "departments": [
+        {
+            "id": 1,
+            "name": "Computer Science",
+            "code": "CS"
+        },
+        {
+            "id": 2,
+            "name": "Engineering",
+            "code": "ENG"
+        },
+        {
+            "id": 3,
+            "name": "Business Administration",
+            "code": "BA"
+        },
+        {
+            "id": 4,
+            "name": "Medicine",
+            "code": "MED"
+        }
+    ]
+}
+--------------------
+
+[GET_HOSTELS] 05:54:01
+{
+    "status": "success",
+    "hostels": [
+        {
+            "id": 1,
+            "name": "Block A",
+            "capacity": 200,
+            "gender": "male"
+        },
+        {
+            "id": 2,
+            "name": "Block B",
+            "capacity": 180,
+            "gender": "female"
+        },
+        {
+            "id": 3,
+            "name": "Block C",
+            "capacity": 220,
+            "gender": "male"
+        },
+        {
+            "id": 4,
+            "name": "Block D",
+            "capacity": 190,
+            "gender": "female"
+        }
+    ]
+}
+--------------------
+
+[GET_SYSTEM_ROLES] 05:54:01
+{
+    "status": "success",
+    "roles": [
+        {
+            "id": 1,
+            "name": "student",
+            "description": "Student user"
+        },
+        {
+            "id": 2,
+            "name": "staff",
+            "description": "Staff member"
+        },
+        {
+            "id": 3,
+            "name": "dean",
+            "description": "Dean of students"
+        },
+        {
+            "id": 4,
+            "name": "admin",
+            "description": "System administrator"
+        },
+        {
+            "id": 5,
+            "name": "cmd",
+            "description": "Chief Medical Officer"
+        },
+        {
+            "id": 6,
+            "name": "hostel",
+            "description": "Hostel administrator"
+        },
+        {
+            "id": 7,
+            "name": "security",
+            "description": "Security officer"
+        }
+    ]
+}
+--------------------

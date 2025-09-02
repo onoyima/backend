@@ -236,7 +236,7 @@ class ParentConsentController extends Controller
                 return response('<h2>Consent approved. Thank you!</h2>', 200);
             }
 
-            if ($action === 'reject') {
+            if ($action === 'reject' || $action === 'decline') {
                 $this->workflowService->parentConsentDecline($consent);
                 Log::info('Parent declined via web link', ['token' => $token, 'consent_id' => $consent->id]);
                 return response('<h2>Consent declined. Thank you for your feedback.</h2>', 200);
@@ -253,7 +253,5 @@ class ParentConsentController extends Controller
 
         return response('<h2>Invalid action specified.</h2>', 400);
     }
-
-
 
 }

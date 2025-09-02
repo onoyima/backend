@@ -32,7 +32,7 @@ class StaffExeatRequestController extends Controller
 
         $roleStatusMap = [
             'cmd' => ['cmd_review'],
-            'deputy_dean' => ['deputy-dean_review'],
+            'deputy_dean' => ['deputy-dean_review', 'parent_consent'],
             'dean' => $activeStatuses, // Dean can see all active statuses
             'dean2' => $activeStatuses, // Dean2 can see all active statuses
             'admin' => $activeStatuses, // Admin can see all active statuses

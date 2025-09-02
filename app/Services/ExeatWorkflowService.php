@@ -14,14 +14,19 @@ use Illuminate\Support\Facades\Http;
 use Twilio\Rest\Client;
 use Carbon\Carbon;
 use App\Services\ExeatNotificationService;
+use App\Services\UrlShortenerService;
 
 class ExeatWorkflowService
 {
     protected $notificationService;
+    protected $deliveryService;
+    protected $urlShortenerService;
 
-    public function __construct(ExeatNotificationService $notificationService)
+    public function __construct(ExeatNotificationService $notificationService, NotificationDeliveryService $deliveryService, UrlShortenerService $urlShortenerService)
     {
         $this->notificationService = $notificationService;
+        $this->deliveryService = $deliveryService;
+        $this->urlShortenerService = $urlShortenerService;
     }
     public function approve(ExeatRequest $exeatRequest, ExeatApproval $approval, $comment = null)
     {
@@ -165,6 +170,9 @@ class ExeatWorkflowService
                 'consent_message'   => $message,
                 'consent_timestamp' => null,
                 'expires_at'        => $expiresAt,
+                'parent_email'      => $exeatRequest->parent_email,
+                'parent_phone'      => $exeatRequest->parent_phone_no,
+                'preferred_mode_of_contact' => $method,
             ]
         );
 
@@ -174,8 +182,8 @@ class ExeatWorkflowService
         $studentName  = $student ? "{$student->fname} {$student->lname}" : '';
         $reason       = $exeatRequest->reason;
 
-        $linkApprove  = url('/api/parent/exeat-consent/'.$parentConsent->consent_token.'/approve');
-        $linkReject   = url('/api/parent/exeat-consent/'.$parentConsent->consent_token.'/reject');
+        $linkApprove  = $this->urlShortenerService->shortenUrl(url('/api/parent/consent/'.$parentConsent->consent_token.'/approve'));
+        $linkReject   = $this->urlShortenerService->shortenUrl(url('/api/parent/consent/'.$parentConsent->consent_token.'/decline'));
 
         $expiryText = $expiresAt->format('F j, Y g:i A');
 
@@ -201,7 +209,7 @@ class ExeatWorkflowService
         
         // Always attempt to send emails first
         try {
-            $this->sendTemplatedEmail($parentEmail, 'Parent', 'Exeat Consent Request', $notificationEmail, $exeatRequest);
+            $this->sendParentConsentEmail($parentEmail, 'Parent', 'Exeat Consent Request', $notificationEmail, $exeatRequest, $linkApprove, $linkReject);
             $emailSent = true;
             Log::info('Parent consent email sent successfully', ['exeat_id' => $exeatRequest->id, 'email' => $parentEmail]);
         } catch (\Exception $e) {
@@ -213,7 +221,7 @@ class ExeatWorkflowService
         }
         
         try {
-            $this->sendTemplatedEmail('onoyimab@veritas.edu.ng', 'Administrator', 'Exeat Consent Request', $notificationEmail, $exeatRequest);
+            $this->sendParentConsentEmail('onoyimab@veritas.edu.ng', 'Administrator', 'Exeat Consent Request', $notificationEmail, $exeatRequest, $linkApprove, $linkReject);
             Log::info('Administrator consent email sent successfully', ['exeat_id' => $exeatRequest->id]);
         } catch (\Exception $e) {
             Log::error('Failed to send administrator consent email', [
@@ -527,6 +535,30 @@ class ExeatWorkflowService
         }
     }
 
+    protected function formatNigerianPhone($phone)
+    {
+        // Remove any non-digit characters
+        $phone = preg_replace('/[^0-9]/', '', $phone);
+        
+        // Handle different Nigerian phone number formats
+        if (strlen($phone) == 11 && substr($phone, 0, 1) == '0') {
+            // 08120212639 -> +2348120212639
+            return '+234' . substr($phone, 1);
+        } elseif (strlen($phone) == 10) {
+            // 8120212639 -> +2348120212639
+            return '+234' . $phone;
+        } elseif (strlen($phone) == 13 && substr($phone, 0, 3) == '234') {
+            // 2348120212639 -> +2348120212639
+            return '+' . $phone;
+        } elseif (strlen($phone) == 14 && substr($phone, 0, 4) == '+234') {
+            // Already in correct format
+            return $phone;
+        }
+        
+        // If not Nigerian format, return as is
+        return $phone;
+    }
+
     protected function sendSmsMessage(string $to, string $message)
     {
         try {
@@ -539,28 +571,34 @@ class ExeatWorkflowService
                 throw new \Exception('Twilio configuration is incomplete');
             }
             
+            // Format phone number for Nigerian numbers
+            $formattedTo = $this->formatNigerianPhone($to);
+            
             $client = new Client($sid, $token);
-            $result = $client->messages->create($to, [
+            $result = $client->messages->create($formattedTo, [
                 'from' => $from,
                 'body' => $message,
             ]);
             
             \Log::info("SMS sent successfully", [
-                'to' => $to,
+                'original_to' => $to,
+                'formatted_to' => $formattedTo,
                 'message_sid' => $result->sid,
                 'status' => $result->status
             ]);
             
         } catch (\Twilio\Exceptions\TwilioException $e) {
             \Log::error("Twilio SMS API error", [
-                'to' => $to,
+                'original_to' => $to,
+                'formatted_to' => isset($formattedTo) ? $formattedTo : $to,
                 'error_code' => $e->getCode(),
                 'error_message' => $e->getMessage(),
                 'twilio_error_code' => method_exists($e, 'getErrorCode') ? $e->getErrorCode() : null
             ]);
         } catch (\Exception $e) {
             \Log::error("Failed to send SMS message", [
-                'to' => $to,
+                'original_to' => $to,
+                'formatted_to' => isset($formattedTo) ? $formattedTo : $to,
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);
@@ -662,7 +700,9 @@ class ExeatWorkflowService
                 'message' => $message,
                 'priority' => $priority,
                 'notification_type' => 'stage_change',
-                'exeatRequest' => $exeatRequest
+                'exeatRequest' => $exeatRequest,
+                'approveUrl' => null,
+                'rejectUrl' => null
             ];
 
             $recipient = [
@@ -672,7 +712,9 @@ class ExeatWorkflowService
 
             Mail::send('emails.exeat-notification', [
                 'notification' => $notification,
-                'recipient' => $recipient
+                'recipient' => $recipient,
+                'approveUrl' => $notification->approveUrl ?? null,
+                'rejectUrl' => $notification->rejectUrl ?? null
             ], function ($msg) use ($email, $recipientName, $subject) {
                 $msg->to($email, $recipientName)->subject($subject);
             });
@@ -683,6 +725,53 @@ class ExeatWorkflowService
             ]);
         } catch (\Exception $e) {
             Log::error('Failed to send templated email', [
+                'error' => $e->getMessage(),
+                'email' => $email,
+                'subject' => $subject
+            ]);
+            throw $e;
+        }
+    }
+
+    /**
+     * Send parent consent email with approve/reject URLs
+     */
+    private function sendParentConsentEmail($email, $recipientName, $subject, $message, $exeatRequest, $approveUrl, $rejectUrl, $priority = 'high')
+    {
+        try {
+            // Create a notification-like object for the template
+            $notification = (object) [
+                'title' => $subject,
+                'message' => $message,
+                'priority' => $priority,
+                'notification_type' => 'parent_consent',
+                'exeatRequest' => $exeatRequest,
+                'approveUrl' => $approveUrl,
+                'rejectUrl' => $rejectUrl
+            ];
+
+            $recipient = [
+                'email' => $email,
+                'name' => $recipientName
+            ];
+
+            Mail::send('emails.exeat-notification', [
+                'notification' => $notification,
+                'recipient' => $recipient,
+                'approveUrl' => $approveUrl,
+                'rejectUrl' => $rejectUrl
+            ], function ($msg) use ($email, $recipientName, $subject) {
+                $msg->to($email, $recipientName)->subject($subject);
+            });
+
+            Log::info('Parent consent email sent successfully', [
+                'email' => $email,
+                'subject' => $subject,
+                'approve_url' => $approveUrl,
+                'reject_url' => $rejectUrl
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to send parent consent email', [
                 'error' => $e->getMessage(),
                 'email' => $email,
                 'subject' => $subject

@@ -23,6 +23,7 @@ use App\Http\Controllers\AdminNotificationController;
 use App\Http\Controllers\DeanNotificationController;
 use App\Http\Controllers\DeanController;
 use App\Http\Controllers\ExeatHistoryController;
+use App\Http\Controllers\StaffExeatStatisticsController;
 
 /*
 |--------------------------------------------------------------------------
@@ -35,6 +36,12 @@ Route::post('/login', [AuthController::class, 'login']);
 Route::post('/register', [AuthController::class, 'register']);
 
 Route::get('/parent/exeat-consent/{token}/{action}', [ParentConsentController::class, 'handleWebConsent']);
+Route::get('/parent/consent/{token}/approve', function($token) {
+    return app(App\Http\Controllers\ParentConsentController::class)->handleWebConsent($token, 'approve');
+});
+Route::get('/parent/consent/{token}/decline', function($token) {
+    return app(App\Http\Controllers\ParentConsentController::class)->handleWebConsent($token, 'decline');
+});
 // Protected routes
 Route::middleware('auth:sanctum')->group(function () {
     // User profile
@@ -80,6 +87,11 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/exeat-requests/{id}/send-parent-consent', [StaffExeatRequestController::class, 'sendParentConsent']);
         Route::get('/exeat-requests/{id}/history', [StaffExeatRequestController::class, 'history']);
         Route::get('/exeat-requests/role-history', [StaffExeatRequestController::class, 'roleHistory']);
+        
+        // Staff exeat statistics routes
+        Route::get('/exeat-statistics', [StaffExeatStatisticsController::class, 'getExeatStatistics']);
+        Route::get('/exeat-statistics/detailed', [StaffExeatStatisticsController::class, 'getDetailedStatistics']);
+        Route::get('/exeat-history', [StaffExeatStatisticsController::class, 'getStaffExeatHistory']);
 
         // Staff notification routes
         Route::prefix('notifications')->group(function () {

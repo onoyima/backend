@@ -5,11 +5,23 @@ use Illuminate\Support\Facades\Cache;
 use App\Http\Controllers\BirthdayController;
 use Illuminate\Http\Request;
 use App\Services\ExeatNotificationService;
+use App\Services\UrlShortenerService;
 use App\Models\User;
 use App\Models\ExeatRequest;
 use Illuminate\Support\Facades\DB;
 
 Route::get('/send-specific-birthday', [BirthdayController::class, 'sendBirthdayEmailToSpecificUsers']);
+
+// URL Shortener redirect route
+Route::get('/s/{shortCode}', function ($shortCode, UrlShortenerService $urlShortener) {
+    $originalUrl = $urlShortener->resolveUrl($shortCode);
+    
+    if ($originalUrl) {
+        return redirect($originalUrl);
+    }
+    
+    return abort(404, 'Short URL not found or expired');
+});
 
 
 Route::get('/', function () {
