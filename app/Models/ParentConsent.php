@@ -17,9 +17,6 @@ class ParentConsent extends Model
         'consent_token',
         'expires_at',
         'consent_timestamp',
-        'parent_email',
-        'parent_phone',
-        'preferred_mode_of_contact',
         'acted_by_staff_id',
         'action_type',
         'deputy_dean_reason'
@@ -32,5 +29,10 @@ class ParentConsent extends Model
     public function studentContact()
     {
         return $this->belongsTo(StudentContact::class);
+    }
+
+    public function actedByStaff()
+    {
+        return $this->belongsTo(Staff::class, 'acted_by_staff_id');
     }
 }

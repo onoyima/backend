@@ -87,7 +87,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/exeat-requests/{id}/send-parent-consent', [StaffExeatRequestController::class, 'sendParentConsent']);
         Route::get('/exeat-requests/{id}/history', [StaffExeatRequestController::class, 'history']);
         Route::get('/exeat-requests/role-history', [StaffExeatRequestController::class, 'roleHistory']);
-        
+
         // Staff exeat statistics routes
         Route::get('/exeat-statistics', [StaffExeatStatisticsController::class, 'getExeatStatistics']);
         Route::get('/exeat-statistics/detailed', [StaffExeatStatisticsController::class, 'getDetailedStatistics']);

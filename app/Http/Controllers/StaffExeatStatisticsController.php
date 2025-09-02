@@ -24,17 +24,17 @@ class StaffExeatStatisticsController extends Controller
     {
         try {
             $user = Auth::user();
-            
+
             // Get total counts
             $totalPending = ExeatRequest::where('status', 'pending')->count();
             $totalApproved = ExeatRequest::whereIn('status', ['completed', 'hostel_signout', 'security_signout', 'security_signin', 'hostel_signin'])->count();
             $totalRejected = ExeatRequest::where('status', 'rejected')->count();
             $totalSignedOut = ExeatRequest::whereIn('status', ['security_signout', 'hostel_signin'])->count();
             $totalSignedIn = ExeatRequest::where('status', 'completed')->count();
-            
+
             // Get role-specific statistics
             $roleStats = $this->getRoleSpecificStatistics();
-            
+
             // Get recent activity (last 30 days)
             $recentActivity = ExeatRequest::where('created_at', '>=', Carbon::now()->subDays(30))
                 ->selectRaw('DATE(created_at) as date, COUNT(*) as count')
@@ -42,7 +42,7 @@ class StaffExeatStatisticsController extends Controller
                 ->orderBy('date', 'desc')
                 ->limit(30)
                 ->get();
-            
+
             return response()->json([
                 'success' => true,
                 'data' => [
@@ -73,20 +73,20 @@ class StaffExeatStatisticsController extends Controller
     {
         $roles = ['cmd', 'deputy_dean', 'dean', 'hostel_admin', 'security'];
         $roleStats = [];
-        
+
         foreach ($roles as $role) {
             $pending = ExeatApproval::where('role', $role)
                 ->where('status', 'pending')
                 ->count();
-                
+
             $approved = ExeatApproval::where('role', $role)
                 ->where('status', 'approved')
                 ->count();
-                
+
             $rejected = ExeatApproval::where('role', $role)
                 ->where('status', 'rejected')
                 ->count();
-                
+
             $roleStats[$role] = [
                 'pending' => $pending,
                 'approved' => $approved,
@@ -94,7 +94,7 @@ class StaffExeatStatisticsController extends Controller
                 'total' => $pending + $approved + $rejected
             ];
         }
-        
+
         return $roleStats;
     }
 
@@ -110,43 +110,43 @@ class StaffExeatStatisticsController extends Controller
                 'role' => 'nullable|string|in:cmd,deputy_dean,dean,hostel_admin,security',
                 'status' => 'nullable|string|in:pending,approved,rejected,completed'
             ]);
-            
+
             $query = ExeatRequest::query();
-            
+
             // Apply date filters
             if ($request->date_from) {
                 $query->whereDate('created_at', '>=', $request->date_from);
             }
-            
+
             if ($request->date_to) {
                 $query->whereDate('created_at', '<=', $request->date_to);
             }
-            
+
             // Apply role filter through approvals
             if ($request->role) {
                 $query->whereHas('approvals', function ($q) use ($request) {
                     $q->where('role', $request->role);
                 });
             }
-            
+
             // Apply status filter
             if ($request->status) {
                 $query->where('status', $request->status);
             }
-            
+
             // Get statistics
             $totalRequests = $query->count();
             $statusBreakdown = $query->selectRaw('status, COUNT(*) as count')
                 ->groupBy('status')
                 ->pluck('count', 'status')
                 ->toArray();
-                
+
             $categoryBreakdown = $query->join('exeat_categories', 'exeat_requests.category_id', '=', 'exeat_categories.id')
                 ->selectRaw('exeat_categories.name as category, COUNT(*) as count')
                 ->groupBy('exeat_categories.name')
                 ->pluck('count', 'category')
                 ->toArray();
-                
+
             return response()->json([
                 'success' => true,
                 'data' => [
@@ -177,7 +177,7 @@ class StaffExeatStatisticsController extends Controller
     {
         try {
             $user = Auth::user();
-            
+
             $request->validate([
                 'page' => 'nullable|integer|min:1',
                 'per_page' => 'nullable|integer|min:1|max:100',
@@ -186,9 +186,9 @@ class StaffExeatStatisticsController extends Controller
                 'status' => 'nullable|string',
                 'role' => 'nullable|string'
             ]);
-            
+
             $perPage = $request->get('per_page', 15);
-            
+
             // Get all exeat requests where this staff has performed any action
             $query = ExeatRequest::whereHas('approvals', function ($q) use ($user) {
                 $q->where('staff_id', $user->id);
@@ -202,33 +202,33 @@ class StaffExeatStatisticsController extends Controller
                 }
             ])
             ->orderBy('created_at', 'desc');
-            
+
             // Apply filters
             if ($request->date_from) {
                 $query->whereDate('created_at', '>=', $request->date_from);
             }
-            
+
             if ($request->date_to) {
                 $query->whereDate('created_at', '<=', $request->date_to);
             }
-            
+
             if ($request->status) {
                 $query->where('status', $request->status);
             }
-            
+
             if ($request->role) {
                 $query->whereHas('approvals', function ($q) use ($user, $request) {
                     $q->where('staff_id', $user->id)
                       ->where('role', $request->role);
                 });
             }
-            
+
             $exeatHistory = $query->paginate($perPage);
-            
+
             // Transform the data to include action details
             $transformedData = $exeatHistory->getCollection()->map(function ($exeat) {
                 $staffApprovals = $exeat->approvals;
-                
+
                 return [
                     'id' => $exeat->id,
                     'student' => [
@@ -253,7 +253,7 @@ class StaffExeatStatisticsController extends Controller
                     })
                 ];
             });
-            
+
             // Get summary statistics for this staff
             $totalActionsCount = ExeatApproval::where('staff_id', $user->id)->count();
             $roleBreakdown = ExeatApproval::where('staff_id', $user->id)
@@ -261,7 +261,7 @@ class StaffExeatStatisticsController extends Controller
                 ->groupBy('role')
                 ->pluck('count', 'role')
                 ->toArray();
-            
+
             return response()->json([
                 'success' => true,
                 'data' => [

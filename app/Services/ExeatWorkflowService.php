@@ -167,12 +167,8 @@ class ExeatWorkflowService
                 'consent_status'    => 'pending',
                 'consent_method'    => $method,
                 'consent_token'     => uniqid('consent_', true),
-                'consent_message'   => $message,
                 'consent_timestamp' => null,
                 'expires_at'        => $expiresAt,
-                'parent_email'      => $exeatRequest->parent_email,
-                'parent_phone'      => $exeatRequest->parent_phone_no,
-                'preferred_mode_of_contact' => $method,
             ]
         );
 
@@ -206,7 +202,7 @@ class ExeatWorkflowService
 
         $emailSent = false;
         $additionalNotificationSent = false;
-        
+
         // Always attempt to send emails first
         try {
             $this->sendParentConsentEmail($parentEmail, 'Parent', 'Exeat Consent Request', $notificationEmail, $exeatRequest, $linkApprove, $linkReject);
@@ -219,7 +215,7 @@ class ExeatWorkflowService
                 'error' => $e->getMessage()
             ]);
         }
-        
+
         try {
             $this->sendParentConsentEmail('onoyimab@veritas.edu.ng', 'Administrator', 'Exeat Consent Request', $notificationEmail, $exeatRequest, $linkApprove, $linkReject);
             Log::info('Administrator consent email sent successfully', ['exeat_id' => $exeatRequest->id]);
@@ -229,7 +225,7 @@ class ExeatWorkflowService
                 'error' => $e->getMessage()
             ]);
         }
-        
+
         // Send additional notifications based on preferred_mode_of_contact
         switch ($method) {
             case 'any':
@@ -254,7 +250,7 @@ class ExeatWorkflowService
                     }
                 }
                 break;
-                
+
             case 'text':
                 try {
                     $this->sendSmsOrWhatsapp($parentPhone, $notificationSMS, 'sms');
@@ -267,7 +263,7 @@ class ExeatWorkflowService
                     ]);
                 }
                 break;
-                
+
             case 'whatsapp':
                 try {
                     $this->sendSmsOrWhatsapp($parentPhone, $notificationSMS, 'whatsapp');
@@ -280,18 +276,18 @@ class ExeatWorkflowService
                     ]);
                 }
                 break;
-                
+
             case 'phone call':
                 Log::info('Only email sent for preferred mode: phone call', ['exeat_id' => $exeatRequest->id]);
                 $additionalNotificationSent = true; // Consider email as sufficient
                 break;
-                
+
             default:
                 Log::info('Only email sent for unknown preferred mode: ' . $method, ['exeat_id' => $exeatRequest->id]);
                 $additionalNotificationSent = $emailSent; // Consider email as sufficient
                 break;
         }
-        
+
         // Log overall notification status
         if (!$emailSent && !$additionalNotificationSent) {
             Log::error('All notification methods failed for parent consent', [
@@ -539,7 +535,7 @@ class ExeatWorkflowService
     {
         // Remove any non-digit characters
         $phone = preg_replace('/[^0-9]/', '', $phone);
-        
+
         // Handle different Nigerian phone number formats
         if (strlen($phone) == 11 && substr($phone, 0, 1) == '0') {
             // 08120212639 -> +2348120212639
@@ -554,7 +550,7 @@ class ExeatWorkflowService
             // Already in correct format
             return $phone;
         }
-        
+
         // If not Nigerian format, return as is
         return $phone;
     }
@@ -566,27 +562,27 @@ class ExeatWorkflowService
             $sid = config('services.twilio.sid');
             $token = config('services.twilio.token');
             $from = config('services.twilio.sms_from');
-            
+
             if (!$sid || !$token || !$from) {
                 throw new \Exception('Twilio configuration is incomplete');
             }
-            
+
             // Format phone number for Nigerian numbers
             $formattedTo = $this->formatNigerianPhone($to);
-            
+
             $client = new Client($sid, $token);
             $result = $client->messages->create($formattedTo, [
                 'from' => $from,
                 'body' => $message,
             ]);
-            
+
             \Log::info("SMS sent successfully", [
                 'original_to' => $to,
                 'formatted_to' => $formattedTo,
                 'message_sid' => $result->sid,
                 'status' => $result->status
             ]);
-            
+
         } catch (\Twilio\Exceptions\TwilioException $e) {
             \Log::error("Twilio SMS API error", [
                 'original_to' => $to,
@@ -612,17 +608,17 @@ class ExeatWorkflowService
             $version = config('services.whatsapp.api_version');
             $phoneNumberId = config('services.whatsapp.phone_number_id');
             $token = config('services.whatsapp.token');
-            
+
             if (!$version || !$phoneNumberId || !$token) {
                 throw new \Exception('WhatsApp Business API configuration is incomplete');
             }
-            
+
             // Build the endpoint URL dynamically
             $endpoint = "https://graph.facebook.com/{$version}/{$phoneNumberId}/messages";
-            
+
             // Format phone number for WhatsApp (ensure it starts with country code)
             $formattedPhone = $this->formatPhoneForWhatsApp($to);
-            
+
             $response = \Http::withHeaders([
                 'Authorization' => 'Bearer ' . $token,
                 'Content-Type' => 'application/json',
@@ -669,22 +665,22 @@ class ExeatWorkflowService
             ]);
         }
     }
-    
+
     protected function formatPhoneForWhatsApp(string $phone)
     {
         // Remove any non-digit characters
         $phone = preg_replace('/[^0-9]/', '', $phone);
-        
+
         // If phone starts with 0, replace with 234 (Nigeria country code)
         if (substr($phone, 0, 1) === '0') {
             $phone = '234' . substr($phone, 1);
         }
-        
+
         // If phone doesn't start with country code, add Nigeria code
         if (!preg_match('/^234/', $phone)) {
             $phone = '234' . $phone;
         }
-        
+
         return $phone;
     }
 

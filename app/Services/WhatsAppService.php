@@ -38,17 +38,17 @@ class WhatsAppService
     {
         // Remove any non-digit characters
         $phone = preg_replace('/[^0-9]/', '', $phone);
-        
+
         // If starts with 0, replace with 234 (Nigeria country code)
         if (substr($phone, 0, 1) === '0') {
             $phone = '234' . substr($phone, 1);
         }
-        
+
         // If doesn't start with 234, add it
         if (substr($phone, 0, 3) !== '234') {
             $phone = '234' . $phone;
         }
-        
+
         return $phone;
     }
 
@@ -63,7 +63,7 @@ class WhatsAppService
 
         $formattedPhone = $this->formatPhoneNumber($to);
         $url = "https://graph.facebook.com/{$this->apiVersion}/{$this->phoneNumberId}/messages";
-        
+
         $data = [
             'messaging_product' => 'whatsapp',
             'to' => $formattedPhone,
@@ -133,7 +133,7 @@ class WhatsAppService
 
         $formattedPhone = $this->formatPhoneNumber($to);
         $url = "https://graph.facebook.com/{$this->apiVersion}/{$this->phoneNumberId}/messages";
-        
+
         $templateData = [
             'name' => $templateName,
             'language' => [
@@ -283,7 +283,7 @@ class WhatsAppService
         $message .= "✅ *APPROVE:* {$approveUrl}\n";
         $message .= "❌ *REJECT:* {$rejectUrl}\n\n";
         $message .= "_This link expires in 24 hours._";
-        
+
         return $message;
     }
 }

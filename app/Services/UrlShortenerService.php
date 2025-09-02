@@ -18,14 +18,14 @@ class UrlShortenerService
     {
         // Generate a short code
         $shortCode = $this->generateShortCode($prefix);
-        
+
         // Store the mapping in cache for 30 days
         Cache::put('short_url:' . $shortCode, $longUrl, now()->addDays(30));
-        
+
         // Return the short URL
         return url('/s/' . $shortCode);
     }
-    
+
     /**
      * Resolve a short code to its original URL
      *
@@ -36,7 +36,7 @@ class UrlShortenerService
     {
         return Cache::get('short_url:' . $shortCode);
     }
-    
+
     /**
      * Generate a unique short code
      *
@@ -50,10 +50,10 @@ class UrlShortenerService
             $randomString = Str::random(6);
             $shortCode = $prefix . $randomString;
         } while (Cache::has('short_url:' . $shortCode));
-        
+
         return $shortCode;
     }
-    
+
     /**
      * Create shortened URLs for parent consent
      *
@@ -64,7 +64,7 @@ class UrlShortenerService
     {
         $approveUrl = url('/api/parent/consent/' . $consentToken . '/approve');
         $rejectUrl = url('/api/parent/consent/' . $consentToken . '/decline');
-        
+
         return [
             'approve' => $this->shortenUrl($approveUrl, 'ap'),
             'reject' => $this->shortenUrl($rejectUrl, 'rj'),
