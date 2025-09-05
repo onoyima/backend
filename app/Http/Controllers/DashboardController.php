@@ -22,8 +22,6 @@ class DashboardController extends Controller
      */
     public function adminDashboard(Request $request): JsonResponse
     {
-        $this->authorize('viewAdminDashboard');
-        
         $timeframe = $request->get('timeframe', '30'); // days
         
         $data = [
@@ -53,8 +51,6 @@ class DashboardController extends Controller
      */
     public function deanDashboard(Request $request): JsonResponse
     {
-        $this->authorize('viewDeanDashboard');
-        
         $user = Auth::user();
         $timeframe = $request->get('timeframe', '30');
         
@@ -83,8 +79,6 @@ class DashboardController extends Controller
      */
     public function staffDashboard(Request $request): JsonResponse
     {
-        $this->authorize('viewStaffDashboard');
-        
         $user = Auth::user();
         $timeframe = $request->get('timeframe', '30');
         
@@ -110,8 +104,6 @@ class DashboardController extends Controller
      */
     public function securityDashboard(Request $request): JsonResponse
     {
-        $this->authorize('viewSecurityDashboard');
-        
         $user = Auth::user();
         $timeframe = $request->get('timeframe', '7'); // Default to 7 days for security
         
@@ -137,8 +129,6 @@ class DashboardController extends Controller
      */
     public function housemasterDashboard(Request $request): JsonResponse
     {
-        $this->authorize('viewHousemasterDashboard');
-        
         $user = Auth::user();
         $timeframe = $request->get('timeframe', '30');
         

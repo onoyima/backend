@@ -284,27 +284,25 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::prefix('dashboard')->group(function () {
         // Admin dashboard - comprehensive analytics
         Route::get('/admin', [DashboardController::class, 'adminDashboard'])
-            ->middleware('can:viewAdminDashboard,App\Models\User');
+            ->middleware('role:admin');
 
         // Dean dashboard - department-specific analytics
         Route::get('/dean', [DashboardController::class, 'deanDashboard'])
-            ->middleware('can:viewDeanDashboard,App\Models\User');
+            ->middleware('role:dean');
 
-        // Staff dashboard - role-specific analytics
-        Route::get('/staff', [DashboardController::class, 'staffDashboard'])
-            ->middleware('can:viewStaffDashboard,App\Models\User');
+        // Staff dashboard - role-specific analytics (accessible by multiple roles)
+        Route::get('/staff', [DashboardController::class, 'staffDashboard']);
 
         // Security dashboard - security-specific analytics
         Route::get('/security', [DashboardController::class, 'securityDashboard'])
-            ->middleware('can:viewSecurityDashboard,App\Models\User');
+            ->middleware('role:security');
 
         // Housemaster dashboard - house-specific analytics
         Route::get('/housemaster', [DashboardController::class, 'housemasterDashboard'])
-            ->middleware('can:viewHousemasterDashboard,App\Models\User');
+            ->middleware('role:housemaster');
 
-        // Common dashboard widgets
-        Route::get('/widgets', [DashboardController::class, 'getWidgets'])
-            ->middleware('can:viewDashboardWidgets,App\Models\User');
+        // Common dashboard widgets (accessible by all authenticated users)
+        Route::get('/widgets', [DashboardController::class, 'getWidgets']);
     });
 });
 

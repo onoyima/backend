@@ -65,12 +65,13 @@ class Notification extends Model
     }
 
     /**
-     * Legacy relationship for backward compatibility
+     * Legacy relationship for backward compatibility - removed due to non-existent User model
+     * Use notifiable() relationship instead for polymorphic user access
      */
-    public function user()
-    {
-        return $this->belongsTo(User::class);
-    }
+    // public function user()
+    // {
+    //     return $this->belongsTo(User::class);
+    // }
 
     /**
      * Mark the notification as read.

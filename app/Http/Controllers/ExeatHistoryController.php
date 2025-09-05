@@ -420,16 +420,31 @@ class ExeatHistoryController extends Controller
 
         // Check permissions for students
         $student = Student::where('email', $user->email)->first();
-        if ($student && $exeat->student_id !== $student->id) {
+        if ($student) {
+            // Students can only view their own requests
+            if ($exeat->student_id !== $student->id) {
+                return response()->json([
+                    'message' => 'You do not have permission to view this request.'
+                ], 403);
+            }
+            // Student has permission to view their own request
             return response()->json([
-                'message' => 'You do not have permission to view this request.'
-            ], 403);
+                'exeat_request' => $exeat
+            ]);
         }
 
         // For staff, check role-based permissions
         $staff = Staff::where('email', $user->email)->first();
         if ($staff) {
             $roleNames = $staff->exeatRoles()->with('role')->get()->pluck('role.name')->toArray();
+            
+            // If staff has no roles, deny access
+            if (empty($roleNames)) {
+                return response()->json([
+                    'message' => 'You do not have permission to view this request.'
+                ], 403);
+            }
+            
             $allowedStatuses = $this->getAllowedStatuses($roleNames);
 
             if (!in_array($exeat->status, $allowedStatuses)) {
@@ -437,10 +452,54 @@ class ExeatHistoryController extends Controller
                     'message' => 'You do not have permission to view this request.'
                 ], 403);
             }
+        } else {
+            // User is neither student nor staff
+            return response()->json([
+                'message' => 'You do not have permission to view this request.'
+            ], 403);
         }
 
         return response()->json([
             'exeat_request' => $exeat
         ]);
+    }
+
+    private function getAllowedStatuses(array $roleNames)
+    {
+        // Define all workflow statuses
+        $activeStatuses = [
+            'pending', 'cmd_review', 'deputy-dean_review', 'parent_consent',
+            'dean_review', 'hostel_signout', 'security_signout', 'security_signin',
+            'hostel_signin', 'cancelled'
+        ];
+
+        // Define all statuses including completed ones for admin/dean
+        $allStatuses = [
+            'pending', 'cmd_review', 'deputy-dean_review', 'parent_consent',
+            'dean_review', 'hostel_signout', 'security_signout', 'security_signin',
+            'hostel_signin', 'completed', 'approved', 'rejected', 'cancelled'
+        ];
+
+        $roleStatusMap = [
+            'cmd' => ['cmd_review'],
+            'deputy_dean' => ['deputy-dean_review', 'parent_consent'],
+            'dean' => $allStatuses, // Dean can see all statuses including completed
+            'dean2' => $allStatuses, // Dean2 can see all statuses including completed
+            'admin' => $allStatuses, // Admin can see all statuses including completed
+            'hostel_admin' => ['hostel_signout', 'hostel_signin'],
+            'security' => ['security_signout', 'security_signin'],
+        ];
+
+        $allowedStatuses = [];
+
+        foreach ($roleNames as $role) {
+            if (isset($roleStatusMap[$role])) {
+                $allowedStatuses = array_merge($allowedStatuses, $roleStatusMap[$role]);
+            } else {
+                Log::notice('Role not mapped to statuses', ['role' => $role]);
+            }
+        }
+
+        return array_unique($allowedStatuses);
     }
 }

@@ -58,19 +58,19 @@ class DashboardPolicy
     /**
      * Determine whether the user can view teacher dashboard.
      */
-    public function viewTeacherDashboard(User $user): bool
+    public function viewTeacherDashboard(Staff $staff): bool
     {
-        return $user->hasRole('teacher') || $user->hasRole('admin') || $user->hasRole('super_admin');
+        $roleNames = $staff->exeatRoles()->with('role')->get()->pluck('role.name')->toArray();
+        return in_array('teacher', $roleNames) || in_array('admin', $roleNames) || in_array('super_admin', $roleNames);
     }
 
     /**
      * Determine whether the user can access dashboard widgets.
      */
-    public function viewDashboardWidgets(User $user): bool
+    public function viewDashboardWidgets(Staff $staff): bool
     {
-        return $user->hasAnyRole([
-            'staff', 'teacher', 'housemaster', 'security', 
-            'dean', 'admin', 'super_admin', 'student'
-        ]);
+        $roleNames = $staff->exeatRoles()->with('role')->get()->pluck('role.name')->toArray();
+        $allowedRoles = ['staff', 'teacher', 'housemaster', 'security', 'dean', 'admin', 'super_admin'];
+        return !empty(array_intersect($roleNames, $allowedRoles));
     }
 }

@@ -28,7 +28,7 @@ class BirthdayController extends Controller
 
         foreach ($students as $student) {
             $email = $student->username;
-            $recipientName = $student->first_name . ' ' . $student->last_name;
+            $recipientName = $student->fname . ' ' . $student->lname;
 
             if (!BirthdayEmailLog::where('email', $email)->whereDate('updated_at', today())->exists()) {
                 $photoBase64 = $student->passport ? 'data:image/jpeg;base64,' . base64_encode($student->passport) : null;
@@ -142,7 +142,7 @@ class BirthdayController extends Controller
         ) 
         {
         $email = $student->username;
-        $recipientName = $student->first_name . ' ' . $student->last_name;
+        $recipientName = $student->fname . ' ' . $student->lname;
 
         if (!BirthdayEmailLog::where('email', $email)->whereDate('updated_at', today())->exists()) {
             $photoBase64 = $student->passport ? 'data:image/jpeg;base64,' . base64_encode($student->passport) : null;

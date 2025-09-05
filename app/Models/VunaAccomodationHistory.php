@@ -29,6 +29,6 @@ class VunaAccomodationHistory extends Model
 
     public function student()
     {
-        return $this->belongsTo(Students::class, 'student_id');
+        return $this->belongsTo(Student::class, 'student_id');
     }
 }

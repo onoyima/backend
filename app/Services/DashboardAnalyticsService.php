@@ -65,8 +65,10 @@ class DashboardAnalyticsService
         $startDate = Carbon::now()->subDays($days);
 
         return [
-            'active_users' => User::where('last_login_at', '>=', $startDate)->count(),
-            'new_registrations' => User::where('created_at', '>=', $startDate)->count(),
+            'active_users' => Staff::where('updated_at', '>=', $startDate)->count() + 
+                             Student::where('updated_at', '>=', $startDate)->count(),
+            'new_registrations' => Staff::where('created_at', '>=', $startDate)->count() + 
+                                  Student::where('created_at', '>=', $startDate)->count(),
             'role_distribution' => $this->getRoleDistribution(),
         ];
     }
@@ -161,14 +163,37 @@ class DashboardAnalyticsService
     {
         $startDate = Carbon::now()->subDays($days);
 
-        $activity = User::select(
-            DB::raw('DATE(last_login_at) as date'),
+        // Combine activity from both Staff and Student models using updated_at as activity indicator
+        $staffActivity = Staff::select(
+            DB::raw('DATE(updated_at) as date'),
             DB::raw('COUNT(DISTINCT id) as active_users')
         )
-        ->where('last_login_at', '>=', $startDate)
+        ->where('updated_at', '>=', $startDate)
         ->groupBy('date')
-        ->orderBy('date')
         ->get();
+
+        $studentActivity = Student::select(
+            DB::raw('DATE(updated_at) as date'),
+            DB::raw('COUNT(DISTINCT id) as active_users')
+        )
+        ->where('updated_at', '>=', $startDate)
+        ->groupBy('date')
+        ->get();
+
+        // Merge and sum the activities by date
+        $activity = collect();
+        $allDates = $staffActivity->pluck('date')->merge($studentActivity->pluck('date'))->unique();
+        
+        foreach ($allDates as $date) {
+            $staffCount = $staffActivity->where('date', $date)->first()->active_users ?? 0;
+            $studentCount = $studentActivity->where('date', $date)->first()->active_users ?? 0;
+            $activity->push((object)[
+                'date' => $date,
+                'active_users' => $staffCount + $studentCount
+            ]);
+        }
+        
+        $activity = $activity->sortBy('date');
 
         return [
             'labels' => $activity->pluck('date')->map(function($date) {
@@ -216,17 +241,18 @@ class DashboardAnalyticsService
      */
     public function getRecentActivities(int $limit = 10): array
     {
-        return ExeatRequest::with(['student', 'approvedBy'])
+        return ExeatRequest::with(['student', 'approvals.staff'])
             ->latest()
             ->limit($limit)
             ->get()
             ->map(function($request) {
+                $latestApproval = $request->approvals->where('status', 'approved')->last();
                 return [
                     'id' => $request->id,
-                    'student_name' => $request->student->full_name ?? 'Unknown',
+                    'student_name' => ($request->student->fname ?? '') . ' ' . ($request->student->lname ?? ''),
                     'status' => $request->status,
                     'created_at' => $request->created_at->diffForHumans(),
-                    'approved_by' => $request->approvedBy->name ?? null,
+                    'approved_by' => $latestApproval && $latestApproval->staff ? ($latestApproval->staff->fname . ' ' . $latestApproval->staff->lname) : null,
                 ];
             })
             ->toArray();
@@ -255,10 +281,7 @@ class DashboardAnalyticsService
 
         // This would need to be adjusted based on your actual department/dean relationship
         return [
-            'total_requests' => ExeatRequest::whereHas('student', function($q) use ($deanId) {
-                // Adjust this query based on your dean-student relationship
-                $q->where('dean_id', $deanId);
-            })->where('created_at', '>=', $startDate)->count(),
+            'total_requests' => ExeatRequest::where('created_at', '>=', $startDate)->count(),
             'average_processing_time' => '2.5 hours',
             'most_active_day' => 'Friday',
         ];
@@ -271,10 +294,6 @@ class DashboardAnalyticsService
     {
         return ExeatRequest::with('student')
             ->where('status', 'pending')
-            ->whereHas('student', function($q) use ($deanId) {
-                // Adjust based on your dean-student relationship
-                $q->where('dean_id', $deanId);
-            })
             ->latest()
             ->limit(10)
             ->get()
@@ -326,7 +345,7 @@ class DashboardAnalyticsService
                 ->whereDate('return_date', today())->count(),
             'overdue_returns' => ExeatRequest::where('status', 'signed_out')
                 ->where('return_date', '<', now())->count(),
-            'sign_ins_today' => ExeatRequest::whereDate('actual_return_date', today())->count(),
+            'sign_ins_today' => ExeatRequest::whereDate('return_date', today())->count(),
         ];
     }
 
@@ -354,8 +373,8 @@ class DashboardAnalyticsService
     private function getAverageProcessingTime(Carbon $startDate): string
     {
         $avgMinutes = ExeatRequest::where('created_at', '>=', $startDate)
-            ->whereNotNull('approved_at')
-            ->selectRaw('AVG(TIMESTAMPDIFF(MINUTE, created_at, approved_at)) as avg_minutes')
+            ->whereIn('status', ['approved', 'completed', 'rejected'])
+            ->selectRaw('AVG(TIMESTAMPDIFF(MINUTE, created_at, updated_at)) as avg_minutes')
             ->value('avg_minutes');
 
         if (!$avgMinutes) return '0 minutes';
@@ -368,47 +387,48 @@ class DashboardAnalyticsService
 
     private function getRoleDistribution(): array
     {
-        return User::select('roles.name', DB::raw('COUNT(*) as count'))
-            ->join('model_has_roles', 'users.id', '=', 'model_has_roles.model_id')
-            ->join('roles', 'model_has_roles.role_id', '=', 'roles.id')
-            ->groupBy('roles.name')
+        // Get role distribution from Staff model (which has exeat roles)
+        $staffRoles = Staff::join('staff_exeat_roles', 'staff.id', '=', 'staff_exeat_roles.staff_id')
+            ->join('exeat_roles', 'staff_exeat_roles.exeat_role_id', '=', 'exeat_roles.id')
+            ->select('exeat_roles.name', DB::raw('COUNT(*) as count'))
+            ->groupBy('exeat_roles.name')
             ->pluck('count', 'name')
             ->toArray();
+
+        // Add student count as a separate category
+        $studentCount = Student::count();
+        if ($studentCount > 0) {
+            $staffRoles['student'] = $studentCount;
+        }
+
+        return $staffRoles;
     }
 
     private function getDepartmentStudentCount(int $deanId): int
     {
-        // Adjust based on your dean-student relationship
-        return Student::where('dean_id', $deanId)->count();
+        // Dean of Student Affairs oversees all students
+        return Student::count();
     }
 
     private function getPendingApprovalsCount(int $deanId): int
     {
-        return ExeatRequest::where('status', 'pending')
-            ->whereHas('student', function($q) use ($deanId) {
-                $q->where('dean_id', $deanId);
-            })->count();
+        // Dean of Student Affairs sees all pending approvals
+        return ExeatRequest::where('status', 'pending')->count();
     }
 
     private function getApprovedTodayCount(int $deanId): int
     {
-        return ExeatRequest::where('status', 'approved')
-            ->whereDate('approved_at', today())
-            ->whereHas('student', function($q) use ($deanId) {
-                $q->where('dean_id', $deanId);
-            })->count();
+        // Dean of Student Affairs sees all approvals from today
+        return ExeatRequest::whereIn('status', ['approved', 'completed'])
+            ->whereDate('updated_at', today())
+            ->count();
     }
 
     private function getDepartmentApprovalRate(int $deanId): float
     {
-        $total = ExeatRequest::whereHas('student', function($q) use ($deanId) {
-            $q->where('dean_id', $deanId);
-        })->count();
-
-        $approved = ExeatRequest::where('status', 'approved')
-            ->whereHas('student', function($q) use ($deanId) {
-                $q->where('dean_id', $deanId);
-            })->count();
+        // Dean of Student Affairs sees system-wide approval rate
+        $total = ExeatRequest::count();
+        $approved = ExeatRequest::where('status', 'approved')->count();
 
         return $total > 0 ? round(($approved / $total) * 100, 2) : 0;
     }
@@ -445,7 +465,7 @@ class DashboardAnalyticsService
         $startDate = Carbon::now()->subDays($days);
 
         return Cache::remember("audit_trail_{$days}d_{$limit}", 300, function () use ($startDate, $limit) {
-            $auditLogs = AuditLog::with(['staff:id,first_name,last_name,email', 'student:id,first_name,last_name,student_id'])
+            $auditLogs = AuditLog::with(['staff:id,fname,lname,email', 'student:id,fname,lname'])
                 ->where('created_at', '>=', $startDate)
                 ->orderBy('created_at', 'desc')
                 ->limit($limit)
@@ -480,7 +500,7 @@ class DashboardAnalyticsService
 
         return Cache::remember("dean_audit_trail_{$deanId}_{$days}d_{$limit}", 300, function () use ($deanId, $startDate, $limit) {
             // Get all audit logs (same as admin view)
-            $auditLogs = AuditLog::with(['staff:id,first_name,last_name,email', 'student:id,first_name,last_name,student_id'])
+            $auditLogs = AuditLog::with(['staff:id,fname,lname,email', 'student:id,fname,lname'])
                 ->where('created_at', '>=', $startDate)
                 ->orderBy('created_at', 'desc')
                 ->limit($limit)
@@ -592,7 +612,7 @@ class DashboardAnalyticsService
         if ($log->staff) {
             return [
                 'type' => 'staff',
-                'name' => $log->staff->first_name . ' ' . $log->staff->last_name,
+                'name' => $log->staff->fname . ' ' . $log->staff->lname,
                 'email' => $log->staff->email,
             ];
         }
@@ -600,7 +620,7 @@ class DashboardAnalyticsService
         if ($log->student) {
             return [
                 'type' => 'student',
-                'name' => $log->student->first_name . ' ' . $log->student->last_name,
+                'name' => $log->student->fname . ' ' . $log->student->lname,
                 'student_id' => $log->student->student_id,
             ];
         }
@@ -653,12 +673,6 @@ class DashboardAnalyticsService
     {
         return AuditLog::select('action', DB::raw('COUNT(*) as count'))
             ->where('created_at', '>=', $startDate)
-            ->where(function ($query) use ($deanId) {
-                $query->whereHas('student', function ($q) use ($deanId) {
-                    $q->where('dean_id', $deanId);
-                })
-                ->orWhere('staff_id', $deanId);
-            })
             ->groupBy('action')
             ->orderBy('count', 'desc')
             ->limit(5)
