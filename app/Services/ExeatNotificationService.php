@@ -297,9 +297,7 @@ class ExeatNotificationService
         }
 
         return sprintf(
-            "Exeat request #%s for %s has been updated from '%s' to '%s'. Please check your dashboard for details.",
-            $exeatRequest->id,
-            $studentInfo,
+            "Your exeat request status has changed from '%s' to '%s'. Please check your dashboard for more details.",
             $statusMap[$oldStatus] ?? $oldStatus,
             $statusMap[$newStatus] ?? $newStatus
         );
@@ -530,12 +528,7 @@ class ExeatNotificationService
         $studentName = $student ? "{$student->fname} {$student->lname}" : 'Student';
         $title = 'Exeat Request Submitted Successfully';
         $message = sprintf(
-            "Dear %s,\n\nYour exeat request has been submitted successfully and is now under review.\n\nRequest Details:\n- Reason: %s\n- Destination: %s\n- Departure Date: %s\n- Return Date: %s\n- Current Status: %s\n\nYou will receive notifications as your request progresses through the approval stages.\n\nThank you.",
-            $studentName,
-            $exeatRequest->reason,
-            $exeatRequest->destination,
-            \Carbon\Carbon::parse($exeatRequest->departure_date)->format('M d, Y'),
-            \Carbon\Carbon::parse($exeatRequest->return_date)->format('M d, Y'),
+            "Your exeat request has been submitted successfully. Current status: %s. Please check your dashboard for more details.",
             str_replace('_', ' ', ucwords($exeatRequest->status, '_'))
         );
 
@@ -563,20 +556,13 @@ class ExeatNotificationService
         $studentName = $student ? "{$student->fname} {$student->lname}" : 'Student';
         $title = 'Exeat Request Rejected';
 
-        $message = sprintf(
-            "Dear %s,\n\nWe regret to inform you that your exeat request has been rejected.\n\nRequest Details:\n- Reason: %s\n- Destination: %s\n- Departure Date: %s\n- Return Date: %s",
-            $studentName,
-            $exeatRequest->reason,
-            $exeatRequest->destination,
-            \Carbon\Carbon::parse($exeatRequest->departure_date)->format('M d, Y'),
-            \Carbon\Carbon::parse($exeatRequest->return_date)->format('M d, Y')
-        );
-
+        $message = "Your exeat request has been rejected.";
+        
         if ($comment) {
-            $message .= "\n\nReason for rejection: {$comment}";
+            $message .= " Reason: {$comment}.";
         }
-
-        $message .= "\n\nIf you have any questions, please contact the appropriate office for clarification.\n\nThank you.";
+        
+        $message .= " Please check your dashboard for more details.";
 
         $this->createNotification(
             $exeatRequest,

@@ -38,14 +38,14 @@ class DashboardAnalyticsService
     public function getExeatStatistics(int $days = 30): array
     {
         $startDate = Carbon::now()->subDays($days);
-        
+
         return Cache::remember("exeat_stats_{$days}d", 300, function () use ($startDate) {
             $totalRequests = ExeatRequest::where('created_at', '>=', $startDate)->count();
             $approvedRequests = ExeatRequest::where('created_at', '>=', $startDate)
                 ->where('status', 'approved')->count();
             $rejectedRequests = ExeatRequest::where('created_at', '>=', $startDate)
                 ->where('status', 'rejected')->count();
-            
+
             return [
                 'total_requests' => $totalRequests,
                 'approved_requests' => $approvedRequests,
@@ -63,7 +63,7 @@ class DashboardAnalyticsService
     public function getUserAnalytics(int $days = 30): array
     {
         $startDate = Carbon::now()->subDays($days);
-        
+
         return [
             'active_users' => User::where('last_login_at', '>=', $startDate)->count(),
             'new_registrations' => User::where('created_at', '>=', $startDate)->count(),
@@ -90,7 +90,7 @@ class DashboardAnalyticsService
     public function getExeatTrendsChart(int $days = 30): array
     {
         $startDate = Carbon::now()->subDays($days);
-        
+
         $trends = ExeatRequest::select(
             DB::raw('DATE(created_at) as date'),
             DB::raw('COUNT(*) as total'),
@@ -135,7 +135,7 @@ class DashboardAnalyticsService
     public function getStatusDistributionChart(int $days = 30): array
     {
         $startDate = Carbon::now()->subDays($days);
-        
+
         $distribution = ExeatRequest::select('status', DB::raw('COUNT(*) as count'))
             ->where('created_at', '>=', $startDate)
             ->groupBy('status')
@@ -160,7 +160,7 @@ class DashboardAnalyticsService
     public function getUserActivityChart(int $days = 30): array
     {
         $startDate = Carbon::now()->subDays($days);
-        
+
         $activity = User::select(
             DB::raw('DATE(last_login_at) as date'),
             DB::raw('COUNT(DISTINCT id) as active_users')
@@ -186,7 +186,7 @@ class DashboardAnalyticsService
     public function getApprovalRatesChart(int $days = 30): array
     {
         $startDate = Carbon::now()->subDays($days);
-        
+
         $rates = ExeatRequest::select(
             DB::raw('DATE(created_at) as date'),
             DB::raw('COUNT(*) as total'),
@@ -252,7 +252,7 @@ class DashboardAnalyticsService
     public function getDepartmentStatistics(int $deanId, int $days = 30): array
     {
         $startDate = Carbon::now()->subDays($days);
-        
+
         // This would need to be adjusted based on your actual department/dean relationship
         return [
             'total_requests' => ExeatRequest::whereHas('student', function($q) use ($deanId) {
@@ -357,12 +357,12 @@ class DashboardAnalyticsService
             ->whereNotNull('approved_at')
             ->selectRaw('AVG(TIMESTAMPDIFF(MINUTE, created_at, approved_at)) as avg_minutes')
             ->value('avg_minutes');
-            
+
         if (!$avgMinutes) return '0 minutes';
-        
+
         $hours = floor($avgMinutes / 60);
         $minutes = $avgMinutes % 60;
-        
+
         return $hours > 0 ? "{$hours}h {$minutes}m" : "{$minutes}m";
     }
 
@@ -404,12 +404,12 @@ class DashboardAnalyticsService
         $total = ExeatRequest::whereHas('student', function($q) use ($deanId) {
             $q->where('dean_id', $deanId);
         })->count();
-        
+
         $approved = ExeatRequest::where('status', 'approved')
             ->whereHas('student', function($q) use ($deanId) {
                 $q->where('dean_id', $deanId);
             })->count();
-            
+
         return $total > 0 ? round(($approved / $total) * 100, 2) : 0;
     }
 
@@ -443,7 +443,7 @@ class DashboardAnalyticsService
     public function getAuditTrail(int $days = 30, int $limit = 50): array
     {
         $startDate = Carbon::now()->subDays($days);
-        
+
         return Cache::remember("audit_trail_{$days}d_{$limit}", 300, function () use ($startDate, $limit) {
             $auditLogs = AuditLog::with(['staff:id,first_name,last_name,email', 'student:id,first_name,last_name,student_id'])
                 ->where('created_at', '>=', $startDate)
@@ -477,7 +477,7 @@ class DashboardAnalyticsService
     public function getDeanAuditTrail(int $deanId, int $days = 30, int $limit = 30): array
     {
         $startDate = Carbon::now()->subDays($days);
-        
+
         return Cache::remember("dean_audit_trail_{$deanId}_{$days}d_{$limit}", 300, function () use ($deanId, $startDate, $limit) {
             // Get all audit logs (same as admin view)
             $auditLogs = AuditLog::with(['staff:id,first_name,last_name,email', 'student:id,first_name,last_name,student_id'])
@@ -512,7 +512,7 @@ class DashboardAnalyticsService
     public function getAuditStatistics(int $days = 30): array
     {
         $startDate = Carbon::now()->subDays($days);
-        
+
         return Cache::remember("audit_stats_{$days}d", 300, function () use ($startDate) {
             $dailyActivity = AuditLog::select(
                 DB::raw('DATE(created_at) as date'),
@@ -625,7 +625,7 @@ class DashboardAnalyticsService
         $sanitized = preg_replace('/password[\s]*[:=][\s]*[^\s,}]+/i', 'password: [REDACTED]', $details);
         $sanitized = preg_replace('/token[\s]*[:=][\s]*[^\s,}]+/i', 'token: [REDACTED]', $sanitized);
         $sanitized = preg_replace('/api_key[\s]*[:=][\s]*[^\s,}]+/i', 'api_key: [REDACTED]', $sanitized);
-        
+
         return $sanitized;
     }
 

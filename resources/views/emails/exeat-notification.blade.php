@@ -204,6 +204,21 @@
                 {!! nl2br(e($notification->message)) !!}
             </div>
 
+            @if(isset($approveUrl) && isset($rejectUrl))
+            <div class="consent-buttons">
+                <h3 style="margin-top: 0; color: #004f40; text-align: center;">Parent Consent Required</h3>
+                <p style="text-align: center; margin-bottom: 25px; color: #004f40;">Please click one of the buttons below to give your consent:</p>
+                
+                <a href="{{ $approveUrl }}" class="consent-button approve-button">✓ APPROVE</a>
+                <a href="{{ $rejectUrl }}" class="consent-button reject-button">✗ REJECT</a>
+                
+                <div class="consent-note">
+                    <p>By clicking approve, you give consent for your child to proceed with this exeat request.</p>
+                    <p>By clicking reject, you deny consent for this exeat request.</p>
+                </div>
+            </div>
+            @endif
+
             @if($notification->exeatRequest)
             <div class="exeat-details">
                 <h3>Exeat Request Details:</h3>
@@ -253,21 +268,6 @@
             @if($notification->notification_type === 'approval_required')
             <div class="action-required">
                 <p><strong>Action Required:</strong> Please log in to the system to review and take action on this exeat request.</p>
-            </div>
-            @endif
-
-            @if(isset($approveUrl) && isset($rejectUrl))
-            <div class="consent-buttons">
-                <h3 style="margin-top: 0; color: #004f40; text-align: center;">Parent Consent Required</h3>
-                <p style="text-align: center; margin-bottom: 25px; color: #004f40;">Please click one of the buttons below to give your consent:</p>
-                
-                <a href="{{ $approveUrl }}" class="consent-button approve-button">✓ APPROVE</a>
-                <a href="{{ $rejectUrl }}" class="consent-button reject-button">✗ REJECT</a>
-                
-                <div class="consent-note">
-                    <p>By clicking approve, you give consent for your child to proceed with this exeat request.</p>
-                    <p>By clicking reject, you deny consent for this exeat request.</p>
-                </div>
             </div>
             @endif
 

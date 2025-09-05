@@ -190,17 +190,14 @@ class ExeatWorkflowService
 
         $expiryText = $expiresAt->format('F j, Y g:i A');
 
+        $matricNumber = $exeatRequest->matric_no ?? 'N/A';
+
         $notificationEmail = <<<EOD
-    Hello,
+    Dear Parent/Guardian,
 
-    We would like to inform you that $studentName has requested permission to leave campus due to the following reason: "$reason".
+    Your ward $studentName with matric number $matricNumber has requested to leave campus.
 
-    Please review and provide your consent before $expiryText:
-
-    Approve: $linkApprove
-    Reject: $linkReject
-
-    Thank you for your support.
+    Please provide your consent by clicking one of the buttons below.
 
     — VERITAS University Exeat Management Team
     EOD;
@@ -967,5 +964,262 @@ EOT;
                 'action' => $action
             ]);
         }
+    }
+
+    /**
+     * Bulk approve multiple exeat requests
+     */
+    public function bulkApprove(array $exeatRequestIds, int $staffId, string $role, ?string $comment = null): array
+    {
+        $results = [];
+        $successCount = 0;
+        $failureCount = 0;
+
+        foreach ($exeatRequestIds as $exeatId) {
+            try {
+                $exeatRequest = ExeatRequest::findOrFail($exeatId);
+
+                // Create approval record
+                $approval = ExeatApproval::create([
+                    'exeat_request_id' => $exeatRequest->id,
+                    'staff_id' => $staffId,
+                    'role' => $role,
+                    'status' => 'approved',
+                    'comment' => $comment,
+                ]);
+
+                // Use existing approve method
+                $this->approve($exeatRequest, $approval, $comment);
+
+                $results[$exeatId] = [
+                    'success' => true,
+                    'message' => 'Successfully approved',
+                    'new_status' => $exeatRequest->status
+                ];
+                $successCount++;
+
+            } catch (\Exception $e) {
+                $results[$exeatId] = [
+                    'success' => false,
+                    'message' => $e->getMessage()
+                ];
+                $failureCount++;
+
+                Log::error('Bulk approve failed for exeat request', [
+                    'exeat_id' => $exeatId,
+                    'error' => $e->getMessage()
+                ]);
+            }
+        }
+
+        Log::info('Bulk approve operation completed', [
+            'staff_id' => $staffId,
+            'role' => $role,
+            'success_count' => $successCount,
+            'failure_count' => $failureCount
+        ]);
+
+        return [
+            'results' => $results,
+            'summary' => [
+                'total' => count($exeatRequestIds),
+                'success' => $successCount,
+                'failed' => $failureCount
+            ]
+        ];
+    }
+
+    /**
+     * Bulk reject multiple exeat requests
+     */
+    public function bulkReject(array $exeatRequestIds, int $staffId, string $role, ?string $comment = null): array
+    {
+        $results = [];
+        $successCount = 0;
+        $failureCount = 0;
+
+        foreach ($exeatRequestIds as $exeatId) {
+            try {
+                $exeatRequest = ExeatRequest::findOrFail($exeatId);
+
+                // Create approval record
+                $approval = ExeatApproval::create([
+                    'exeat_request_id' => $exeatRequest->id,
+                    'staff_id' => $staffId,
+                    'role' => $role,
+                    'status' => 'rejected',
+                    'comment' => $comment,
+                ]);
+
+                // Use existing reject method
+                $this->reject($exeatRequest, $approval, $comment);
+
+                $results[$exeatId] = [
+                    'success' => true,
+                    'message' => 'Successfully rejected',
+                    'new_status' => $exeatRequest->status
+                ];
+                $successCount++;
+
+            } catch (\Exception $e) {
+                $results[$exeatId] = [
+                    'success' => false,
+                    'message' => $e->getMessage()
+                ];
+                $failureCount++;
+
+                Log::error('Bulk reject failed for exeat request', [
+                    'exeat_id' => $exeatId,
+                    'error' => $e->getMessage()
+                ]);
+            }
+        }
+
+        Log::info('Bulk reject operation completed', [
+            'staff_id' => $staffId,
+            'role' => $role,
+            'success_count' => $successCount,
+            'failure_count' => $failureCount
+        ]);
+
+        return [
+            'results' => $results,
+            'summary' => [
+                'total' => count($exeatRequestIds),
+                'success' => $successCount,
+                'failed' => $failureCount
+            ]
+        ];
+    }
+
+    /**
+     * Special Dean Override - Bypass entire workflow to security/hostel signout
+     */
+    public function specialDeanOverride(array $exeatRequestIds, int $staffId, string $overrideReason, array $options = []): array
+    {
+        $results = [];
+        $successCount = 0;
+        $failureCount = 0;
+
+        $bypassSecurity = $options['bypass_security_check'] ?? false;
+        $bypassHostel = $options['bypass_hostel_signout'] ?? false;
+        $emergencyContact = $options['emergency_contact'] ?? null;
+        $specialInstructions = $options['special_instructions'] ?? null;
+
+        foreach ($exeatRequestIds as $exeatId) {
+            try {
+                $exeatRequest = ExeatRequest::findOrFail($exeatId);
+                $oldStatus = $exeatRequest->status;
+
+                // Determine final status based on bypass options
+                if ($bypassSecurity && $bypassHostel) {
+                    $finalStatus = 'completed';
+                } elseif ($bypassSecurity) {
+                    $finalStatus = 'hostel_signin';
+                } elseif ($bypassHostel) {
+                    $finalStatus = 'security_signin';
+                } else {
+                    $finalStatus = 'security_signout';
+                }
+
+                // Update exeat request status directly
+                $exeatRequest->status = $finalStatus;
+                $exeatRequest->save();
+
+                // Create special approval record
+                $approval = ExeatApproval::create([
+                    'exeat_request_id' => $exeatRequest->id,
+                    'staff_id' => $staffId,
+                    'role' => 'dean',
+                    'status' => 'approved',
+                    'comment' => "SPECIAL DEAN OVERRIDE: {$overrideReason}",
+                ]);
+
+                // Create security signout record if not bypassed
+                if (!$bypassSecurity) {
+                    SecuritySignout::create([
+                        'exeat_request_id' => $exeatRequest->id,
+                        'signout_time' => now(),
+                        'signin_time' => $finalStatus === 'completed' ? now() : null,
+                        'security_id' => $staffId,
+                    ]);
+                }
+
+                // Create hostel signout record if not bypassed
+                if (!$bypassHostel) {
+                    HostelSignout::create([
+                        'exeat_request_id' => $exeatRequest->id,
+                        'signout_time' => now(),
+                        'signin_time' => $finalStatus === 'completed' ? now() : null,
+                        'hostel_admin_id' => $staffId,
+                    ]);
+                }
+
+                // Create audit log
+                $this->createAuditLog(
+                    $exeatRequest,
+                    $staffId,
+                    $exeatRequest->student_id,
+                    'special_dean_override',
+                    "Special Dean Override: Status changed from {$oldStatus} to {$finalStatus}. Reason: {$overrideReason}",
+                    $overrideReason
+                );
+
+                // Send notifications
+                try {
+                    $this->notificationService->sendSpecialOverrideNotification(
+                        $exeatRequest,
+                        $overrideReason,
+                        $emergencyContact,
+                        $specialInstructions
+                    );
+                } catch (\Exception $e) {
+                    Log::error('Failed to send special override notification', [
+                        'error' => $e->getMessage(),
+                        'exeat_id' => $exeatRequest->id
+                    ]);
+                }
+
+                $results[$exeatId] = [
+                    'success' => true,
+                    'message' => 'Special dean override applied successfully',
+                    'old_status' => $oldStatus,
+                    'new_status' => $finalStatus,
+                    'bypassed' => [
+                        'security' => $bypassSecurity,
+                        'hostel' => $bypassHostel
+                    ]
+                ];
+                $successCount++;
+
+            } catch (\Exception $e) {
+                $results[$exeatId] = [
+                    'success' => false,
+                    'message' => $e->getMessage()
+                ];
+                $failureCount++;
+
+                Log::error('Special dean override failed for exeat request', [
+                    'exeat_id' => $exeatId,
+                    'error' => $e->getMessage()
+                ]);
+            }
+        }
+
+        Log::info('Special dean override operation completed', [
+            'staff_id' => $staffId,
+            'success_count' => $successCount,
+            'failure_count' => $failureCount,
+            'override_reason' => $overrideReason
+        ]);
+
+        return [
+            'results' => $results,
+            'summary' => [
+                'total' => count($exeatRequestIds),
+                'success' => $successCount,
+                'failed' => $failureCount
+            ]
+        ];
     }
 }

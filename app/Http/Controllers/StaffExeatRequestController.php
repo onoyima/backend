@@ -25,8 +25,8 @@ class StaffExeatRequestController extends Controller
     {
         // Define all workflow statuses (excluding completed, rejected, and appeal)
         $activeStatuses = [
-            'pending', 'cmd_review', 'deputy-dean_review', 'parent_consent', 
-            'dean_review', 'hostel_signout', 'security_signout', 'security_signin', 
+            'pending', 'cmd_review', 'deputy-dean_review', 'parent_consent',
+            'dean_review', 'hostel_signout', 'security_signout', 'security_signin',
             'hostel_signin', 'cancelled'
         ];
 
@@ -66,12 +66,12 @@ class StaffExeatRequestController extends Controller
         ];
 
         $roles = $user->exeatRoles()->with('role')->get()->pluck('role.name')->toArray();
-        
+
         // If user has admin role, they can act as any role based on current status
         if (in_array('admin', $roles) && isset($roleMap[$currentStatus])) {
             return $roleMap[$currentStatus];
         }
-        
+
         // For non-admin users, check if they have the specific role for the current status
         foreach ($roles as $role) {
             if (isset($roleMap[$currentStatus]) && $roleMap[$currentStatus] === $role) {
@@ -394,15 +394,15 @@ public function approve(StaffExeatApprovalRequest $request, $id)
         }
 
         $roleNames = $user->exeatRoles()->with('role')->get()->pluck('role.name')->toArray();
-        
+
         if (empty($roleNames)) {
             return response()->json(['message' => 'No roles assigned.'], 403);
         }
 
         // Define all possible statuses in the exeat workflow
         $allStatuses = [
-            'pending', 'cmd_review', 'deputy-dean_review', 'parent_consent', 
-            'dean_review', 'hostel_signout', 'security_signout', 'security_signin', 
+            'pending', 'cmd_review', 'deputy-dean_review', 'parent_consent',
+            'dean_review', 'hostel_signout', 'security_signout', 'security_signin',
             'hostel_signin', 'completed', 'rejected', 'appeal'
         ];
 
@@ -433,7 +433,7 @@ public function approve(StaffExeatApprovalRequest $request, $id)
 
         // Check if user has admin, dean, or dean2 role - they can see ALL requests
         $canSeeAllRequests = array_intersect(['admin', 'dean', 'dean2'], $roleNames);
-        
+
         if (!empty($canSeeAllRequests)) {
             // Admin, dean, and dean2 can see all exeat requests
             $allRequestIds = ExeatRequest::pluck('id')->toArray();
@@ -491,14 +491,14 @@ public function approve(StaffExeatApprovalRequest $request, $id)
         foreach ($exeatRequests as $request) {
             $request->staff_roles = $roleNames;
             $request->acting_roles = [];
-            
+
             // Determine which roles this staff member could act as for this request
             foreach ($roleNames as $role) {
                 if ($role === 'admin' || $role === 'dean') {
                     $request->acting_roles[] = $role;
                 } elseif (isset($roleStatusMap[$role])) {
                     foreach ($roleStatusMap[$role] as $status) {
-                        if ($request->status === $status || 
+                        if ($request->status === $status ||
                             (isset($request->status_history) && strpos($request->status_history, $status) !== false)) {
                             $request->acting_roles[] = $role;
                             break;
@@ -525,7 +525,7 @@ public function approve(StaffExeatApprovalRequest $request, $id)
         if (!($user instanceof \App\Models\Staff)) {
             return response()->json(['message' => 'Unauthorized.'], 403);
         }
-        
+
         // Check if staff has deputy_dean role
         $roleNames = $user->exeatRoles()->with('role')->get()->pluck('role.name')->toArray();
         if (!in_array('deputy_dean', $roleNames)) {
@@ -542,28 +542,28 @@ public function approve(StaffExeatApprovalRequest $request, $id)
         ]);
 
         $perPage = $request->get('per_page', 20);
-        
+
         $query = \App\Models\ParentConsent::with(['exeatRequest.student'])
             ->where('consent_status', 'pending')
             ->whereHas('exeatRequest', function ($q) {
                 $q->where('status', 'parent_consent');
             })
             ->orderBy('created_at', 'asc');
-        
+
         if ($request->has('student_id')) {
             $query->whereHas('exeatRequest', function ($q) use ($request) {
                 $q->where('student_id', $request->student_id);
             });
         }
-        
+
         if ($request->has('date_from')) {
             $query->where('created_at', '>=', $request->date_from);
         }
-        
+
         if ($request->has('date_to')) {
             $query->where('created_at', '<=', $request->date_to);
         }
-        
+
         $consents = $query->paginate($perPage);
 
         return response()->json([
@@ -589,7 +589,7 @@ public function approve(StaffExeatApprovalRequest $request, $id)
         if (!($user instanceof \App\Models\Staff)) {
             return response()->json(['message' => 'Unauthorized.'], 403);
         }
-        
+
         // Check if staff has deputy_dean role
         $roleNames = $user->exeatRoles()->with('role')->get()->pluck('role.name')->toArray();
         if (!in_array('deputy_dean', $roleNames)) {
@@ -602,36 +602,36 @@ public function approve(StaffExeatApprovalRequest $request, $id)
             'reason' => 'required|string|max:500',
             'notify_parent' => 'boolean'
         ]);
-        
+
         $consent = \App\Models\ParentConsent::with('exeatRequest.student')->find($consentId);
-        
+
         if (!$consent) {
             return response()->json([
                 'message' => 'Parent consent not found'
             ], 404);
         }
-        
+
         if ($consent->consent_status !== 'pending') {
             return response()->json([
                 'message' => 'This consent request has already been processed'
             ], 400);
         }
-        
+
         if ($consent->exeatRequest->status !== 'parent_consent') {
             return response()->json([
                 'message' => 'Exeat request is not in parent consent stage'
             ], 400);
         }
-        
+
         // Check if consent has expired
         if ($consent->expires_at && now()->gt($consent->expires_at)) {
             return response()->json([
                 'message' => 'This consent link has expired'
             ], 410);
         }
-        
+
         $workflow = $this->workflowService;
-        
+
         DB::beginTransaction();
         try {
             // Update consent status
@@ -642,21 +642,22 @@ public function approve(StaffExeatApprovalRequest $request, $id)
                 'action_reason' => $request->reason,
                 'acted_at' => now()
             ]);
-            
+
             // Move exeat request to next stage
             $exeatRequest = $consent->exeatRequest;
             $exeatRequest->update(['status' => 'dean_review']);
-            
+
             // Create audit log
             AuditLog::create([
                 'target_type' => 'exeat_request',
                 'target_id' => $exeatRequest->id,
                 'staff_id' => $user->id,
+                'student_id' => $exeatRequest->student_id,
                 'action' => 'deputy_dean_parent_consent_approval',
                 'details' => "Deputy Dean approved parent consent on behalf of parent. Reason: {$request->reason}",
                 'timestamp' => now()
             ]);
-            
+
             DB::commit();
         } catch (\Throwable $e) {
             DB::rollBack();
@@ -681,7 +682,7 @@ public function approve(StaffExeatApprovalRequest $request, $id)
         if (!($user instanceof \App\Models\Staff)) {
             return response()->json(['message' => 'Unauthorized.'], 403);
         }
-        
+
         // Check if staff has deputy_dean role
         $roleNames = $user->exeatRoles()->with('role')->get()->pluck('role.name')->toArray();
         if (!in_array('deputy_dean', $roleNames)) {
@@ -694,34 +695,34 @@ public function approve(StaffExeatApprovalRequest $request, $id)
             'reason' => 'required|string|max:500',
             'notify_parent' => 'boolean'
         ]);
-        
+
         $consent = \App\Models\ParentConsent::with('exeatRequest.student')->find($consentId);
-        
+
         if (!$consent) {
             return response()->json([
                 'message' => 'Parent consent not found'
             ], 404);
         }
-        
+
         if ($consent->consent_status !== 'pending') {
             return response()->json([
                 'message' => 'This consent request has already been processed'
             ], 400);
         }
-        
+
         if ($consent->exeatRequest->status !== 'parent_consent') {
             return response()->json([
                 'message' => 'Exeat request is not in parent consent stage'
             ], 400);
         }
-        
+
         // Check if consent has expired
         if ($consent->expires_at && now()->gt($consent->expires_at)) {
             return response()->json([
                 'message' => 'This consent link has expired'
             ], 410);
         }
-        
+
         DB::beginTransaction();
         try {
             // Update consent status
@@ -732,21 +733,22 @@ public function approve(StaffExeatApprovalRequest $request, $id)
                 'action_reason' => $request->reason,
                 'acted_at' => now()
             ]);
-            
+
             // Move exeat request to rejected status
             $exeatRequest = $consent->exeatRequest;
             $exeatRequest->update(['status' => 'rejected']);
-            
+
             // Create audit log
             AuditLog::create([
                 'target_type' => 'exeat_request',
                 'target_id' => $exeatRequest->id,
                 'staff_id' => $user->id,
+                'student_id' => $exeatRequest->student_id,
                 'action' => 'deputy_dean_parent_consent_rejection',
                 'details' => "Deputy Dean rejected parent consent on behalf of parent. Reason: {$request->reason}",
                 'timestamp' => now()
             ]);
-            
+
             DB::commit();
         } catch (\Throwable $e) {
             DB::rollBack();
@@ -771,7 +773,7 @@ public function approve(StaffExeatApprovalRequest $request, $id)
         if (!($user instanceof \App\Models\Staff)) {
             return response()->json(['message' => 'Unauthorized.'], 403);
         }
-        
+
         // Check if staff has deputy_dean role
         $roleNames = $user->exeatRoles()->with('role')->get()->pluck('role.name')->toArray();
         if (!in_array('deputy_dean', $roleNames)) {
@@ -779,21 +781,21 @@ public function approve(StaffExeatApprovalRequest $request, $id)
                 'message' => 'Unauthorized. Only Deputy Dean can access parent consent statistics.'
             ], 403);
         }
-        
+
         $totalPending = \App\Models\ParentConsent::where('consent_status', 'pending')
             ->whereHas('exeatRequest', function ($q) {
                 $q->where('status', 'parent_consent');
             })
             ->count();
-            
+
         $totalActedByDeputyDean = \App\Models\ParentConsent::where('acted_by_staff_id', $user->id)
             ->whereIn('action_type', ['deputy_dean_approval', 'deputy_dean_rejection'])
             ->count();
-            
+
         $approvedByDeputyDean = \App\Models\ParentConsent::where('acted_by_staff_id', $user->id)
             ->where('action_type', 'deputy_dean_approval')
             ->count();
-            
+
         $rejectedByDeputyDean = \App\Models\ParentConsent::where('acted_by_staff_id', $user->id)
             ->where('action_type', 'deputy_dean_rejection')
             ->count();

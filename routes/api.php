@@ -25,6 +25,7 @@ use App\Http\Controllers\DeanController;
 use App\Http\Controllers\ExeatHistoryController;
 use App\Http\Controllers\StaffExeatStatisticsController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\AdminBulkOperationsController;
 
 /*
 |--------------------------------------------------------------------------
@@ -147,6 +148,15 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/clear-preferences-cache', [AdminNotificationController::class, 'clearPreferencesCache']);
         Route::get('/templates', [AdminNotificationController::class, 'getNotificationTemplates']);
     });
+
+    // Admin bulk operations routes
+    Route::prefix('bulk-operations')->group(function () {
+        Route::get('/exeat-requests', [AdminBulkOperationsController::class, 'getFilteredRequests']);
+        Route::post('/bulk-approve', [AdminBulkOperationsController::class, 'bulkApprove']);
+        Route::post('/bulk-reject', [AdminBulkOperationsController::class, 'bulkReject']);
+        Route::post('/special-dean-override', [AdminBulkOperationsController::class, 'specialDeanOverride']);
+        Route::get('/statistics', [AdminBulkOperationsController::class, 'getStatistics']);
+    });
 });
 
     // Dean routes
@@ -177,6 +187,15 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::post('/{consentId}/approve', [StaffExeatRequestController::class, 'approveParentConsent']);
             Route::post('/{consentId}/reject', [StaffExeatRequestController::class, 'rejectParentConsent']);
             Route::get('/statistics', [StaffExeatRequestController::class, 'getParentConsentStats']);
+        });
+
+        // Dean bulk operations routes
+        Route::prefix('bulk-operations')->group(function () {
+            Route::get('/exeat-requests', [AdminBulkOperationsController::class, 'getFilteredRequests']);
+            Route::post('/bulk-approve', [AdminBulkOperationsController::class, 'bulkApprove']);
+            Route::post('/bulk-reject', [AdminBulkOperationsController::class, 'bulkReject']);
+            Route::post('/special-dean-override', [AdminBulkOperationsController::class, 'specialDeanOverride']);
+            Route::get('/statistics', [AdminBulkOperationsController::class, 'getStatistics']);
         });
     });
 
@@ -265,23 +284,23 @@ Route::middleware('auth:sanctum')->group(function () {
         // Admin dashboard - comprehensive analytics
         Route::get('/admin', [DashboardController::class, 'adminDashboard'])
             ->middleware('can:viewAdminDashboard,App\Models\User');
-        
+
         // Dean dashboard - department-specific analytics
         Route::get('/dean', [DashboardController::class, 'deanDashboard'])
             ->middleware('can:viewDeanDashboard,App\Models\User');
-        
+
         // Staff dashboard - role-specific analytics
         Route::get('/staff', [DashboardController::class, 'staffDashboard'])
             ->middleware('can:viewStaffDashboard,App\Models\User');
-        
+
         // Security dashboard - security-specific analytics
         Route::get('/security', [DashboardController::class, 'securityDashboard'])
             ->middleware('can:viewSecurityDashboard,App\Models\User');
-        
+
         // Housemaster dashboard - house-specific analytics
         Route::get('/housemaster', [DashboardController::class, 'housemasterDashboard'])
             ->middleware('can:viewHousemasterDashboard,App\Models\User');
-        
+
         // Common dashboard widgets
         Route::get('/widgets', [DashboardController::class, 'getWidgets'])
             ->middleware('can:viewDashboardWidgets,App\Models\User');
