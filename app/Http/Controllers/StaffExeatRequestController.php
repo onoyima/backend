@@ -23,11 +23,11 @@ class StaffExeatRequestController extends Controller
 
     private function getAllowedStatuses(array $roleNames)
     {
-        // Define all workflow statuses
+        // Define all workflow statuses (excluding completed, rejected, and appeal)
         $activeStatuses = [
             'pending', 'cmd_review', 'deputy-dean_review', 'parent_consent', 
             'dean_review', 'hostel_signout', 'security_signout', 'security_signin', 
-            'hostel_signin', 'completed', 'rejected', 'cancelled', 'appeal'
+            'hostel_signin', 'cancelled'
         ];
 
         $roleStatusMap = [
@@ -288,7 +288,7 @@ public function approve(StaffExeatApprovalRequest $request, $id)
     }
 
     $validated = $request->validate(['comment' => 'required|string']);
-    $workflow = new ExeatWorkflowService();
+    $workflow = $this->workflowService;
 
     DB::beginTransaction();
     try {
@@ -630,7 +630,7 @@ public function approve(StaffExeatApprovalRequest $request, $id)
             ], 410);
         }
         
-        $workflow = new ExeatWorkflowService();
+        $workflow = $this->workflowService;
         
         DB::beginTransaction();
         try {

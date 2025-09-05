@@ -96,7 +96,7 @@ class ExeatRequest extends Model
         return $this->is_medical && $this->status === 'pending';
     }
 
-    // Method to check if exeat request covers weekdays and send notification
+    // Method to check if exeat request covers weekdays and send notification (called after dean approval)
     public function checkWeekdaysAndNotify(): void
     {
         $weekdaysCovered = $this->getWeekdaysCovered();
@@ -126,7 +126,7 @@ class ExeatRequest extends Model
         return $weekdays;
     }
 
-    // Send email notification for weekday absence
+    // Send email notification for weekday absence (triggered after dean approval)
     private function sendWeekdayNotification(array $weekdays): void
     {
         try {

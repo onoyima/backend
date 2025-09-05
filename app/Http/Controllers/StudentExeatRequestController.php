@@ -89,8 +89,7 @@ class StudentExeatRequestController extends Controller
             'status' => 'pending',
         ]);
 
-        // Check if request covers weekdays and send notification if needed
-        $exeat->checkWeekdaysAndNotify();
+        // Weekdays notification will be sent after dean approval instead of at creation
 
         // Send confirmation notification to student
         try {

@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\Http;
 use Twilio\Rest\Client;
 use Carbon\Carbon;
 use App\Services\ExeatNotificationService;
+use App\Services\NotificationDeliveryService;
 use App\Services\UrlShortenerService;
 
 class ExeatWorkflowService
@@ -40,6 +41,12 @@ class ExeatWorkflowService
         $this->handleSpecialStageActions($exeatRequest, $approval, $oldStatus);
 
         $this->advanceStage($exeatRequest);
+
+        // Check if dean has approved (status changed from dean_review to hostel_signout)
+        // and send weekdays notification if needed
+        if ($oldStatus === 'dean_review' && $exeatRequest->status === 'hostel_signout') {
+            $exeatRequest->checkWeekdaysAndNotify();
+        }
 
         $this->createAuditLog(
             $exeatRequest,

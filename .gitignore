@@ -40,3 +40,7 @@ API_DOCUMENTATION.md
 API_ENDPOINTS.md
 config/auth copy.php
 config/sanctum copy.php
+DASHBOARD_API_TESTING_GUIDE.md
+test_dashboard_endpoints.php
+test_weekdays_notification.php
+test_audit_trail.php
