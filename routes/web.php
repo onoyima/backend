@@ -28,6 +28,9 @@ Route::get('/', function () {
     return Redirect::to('/status');
 });
 
+// Include demo routes for consent pages (remove in production)
+require __DIR__.'/demo.php';
+
 Route::get('/status', function () {
     $list = Cache::get('api_status_list', []);
     return view('status', ['status_list' => $list]);

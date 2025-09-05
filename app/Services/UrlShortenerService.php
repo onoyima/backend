@@ -19,8 +19,18 @@ class UrlShortenerService
         // Generate a short code
         $shortCode = $this->generateShortCode($prefix);
 
-        // Store the mapping in cache for 30 days
-        Cache::put('short_url:' . $shortCode, $longUrl, now()->addDays(30));
+        // Store the mapping in cache for 30 days (longer than consent expiry)
+        $cacheKey = 'short_url:' . $shortCode;
+        $expiresAt = now()->addDays(30);
+        Cache::put($cacheKey, $longUrl, $expiresAt);
+
+        // Log the URL shortening for debugging
+        \Log::info('URL shortened', [
+            'short_code' => $shortCode,
+            'long_url' => $longUrl,
+            'expires_at' => $expiresAt,
+            'cache_key' => $cacheKey
+        ]);
 
         // Return the short URL
         return url('/s/' . $shortCode);
@@ -34,7 +44,18 @@ class UrlShortenerService
      */
     public function resolveUrl($shortCode)
     {
-        return Cache::get('short_url:' . $shortCode);
+        $cacheKey = 'short_url:' . $shortCode;
+        $longUrl = Cache::get($cacheKey);
+        
+        // Log the resolution attempt
+        \Log::info('URL resolution attempt', [
+            'short_code' => $shortCode,
+            'cache_key' => $cacheKey,
+            'resolved_url' => $longUrl,
+            'success' => $longUrl !== null
+        ]);
+        
+        return $longUrl;
     }
 
     /**
