@@ -95,11 +95,16 @@ class ExeatHistoryController extends Controller
             
             return [
                 'id' => $exeat->id,
-                'student' => [
+                'student' => $exeat->student ? [
                     'id' => $exeat->student->id,
                     'name' => $exeat->student->fname . ' ' . $exeat->student->lname,
                     'matric_no' => $exeat->matric_no, // Get matric_no from exeat_requests table
                     'email' => $exeat->student->email
+                ] : [
+                    'id' => null,
+                    'name' => 'Unknown Student',
+                    'matric_no' => $exeat->matric_no,
+                    'email' => null
                 ],
                 'category' => $exeat->category ? $exeat->category->name : null,
                 'reason' => $exeat->reason,
@@ -230,11 +235,16 @@ class ExeatHistoryController extends Controller
         $exeats->getCollection()->transform(function ($exeat) {
             return [
                 'id' => $exeat->id,
-                'student' => [
+                'student' => $exeat->student ? [
                     'id' => $exeat->student->id,
                     'name' => $exeat->student->fname . ' ' . $exeat->student->lname,
                     'matric_no' => $exeat->student->matric_no,
                     'email' => $exeat->student->email
+                ] : [
+                    'id' => null,
+                    'name' => 'Unknown Student',
+                    'matric_no' => null,
+                    'email' => null
                 ],
                 'category' => $exeat->category ? $exeat->category->name : null,
                 'reason' => $exeat->reason,
@@ -245,7 +255,7 @@ class ExeatHistoryController extends Controller
                 'is_medical' => $exeat->is_medical,
                 'approvals' => $exeat->approvals->map(function($approval) {
                     return [
-                        'staff_name' => $approval->staff->fname . ' ' . $approval->staff->lname,
+                        'staff_name' => $approval->staff ? ($approval->staff->fname . ' ' . $approval->staff->lname) : 'Unknown Staff',
                         'status' => $approval->status,
                         'comments' => $approval->comments,
                         'approved_at' => $approval->created_at
