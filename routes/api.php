@@ -235,6 +235,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // Exeat History and Statistics routes
     Route::get('/staff/exeat-history', [ExeatHistoryController::class, 'getStaffExeatHistory']);
     Route::get('/exeats/by-status/{status}', [ExeatHistoryController::class, 'getExeatsByStatus']);
+    Route::get('/exeats/by-status/{status}/{id}', [ExeatHistoryController::class, 'getExeatByStatusAndId']);
     Route::get('/exeats/statistics', [ExeatHistoryController::class, 'getExeatStatistics']);
 
     // Communication routes

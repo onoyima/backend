@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use App\Models\ExeatRequest;
 use App\Models\Staff;
 use App\Models\Student;
+
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
@@ -369,6 +370,77 @@ class ExeatHistoryController extends Controller
                     'group_by' => $groupBy
                 ]
             ]
+        ]);
+    }
+
+    /**
+     * Get individual exeat details by ID and status
+     * GET /api/exeats/by-status/{status}/{id}
+     */
+    public function getExeatByStatusAndId(Request $request, $status, $id): JsonResponse
+    {
+        $user = $request->user();
+        
+        // Validate status - include all workflow statuses
+        $validStatuses = [
+            'pending', 'cmd_review', 'deputy-dean_review', 'parent_consent', 
+            'dean_review', 'hostel_signout', 'security_signout', 'security_signin', 
+            'hostel_signin', 'completed', 'approved', 'rejected', 'cancelled'
+        ];
+        
+        if (!in_array($status, $validStatuses)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid status. Must be one of: ' . implode(', ', $validStatuses)
+            ], 400);
+        }
+
+        // Validate ID format
+        if (!is_numeric($id) || $id <= 0) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid exeat request ID.'
+            ], 400);
+        }
+
+        // Get the exeat request with basic relationships
+        $exeat = ExeatRequest::with([
+            'student:id,fname,lname,email,passport',
+            'category:id,name'
+        ])
+        ->where('id', $id)
+        ->where('status', $status)
+        ->first();
+
+        if (!$exeat) {
+            return response()->json([
+                'message' => 'Exeat request not found.'
+            ], 404);
+        }
+
+        // Check permissions for students
+        $student = Student::where('email', $user->email)->first();
+        if ($student && $exeat->student_id !== $student->id) {
+            return response()->json([
+                'message' => 'You do not have permission to view this request.'
+            ], 403);
+        }
+
+        // For staff, check role-based permissions
+        $staff = Staff::where('email', $user->email)->first();
+        if ($staff) {
+            $roleNames = $staff->exeatRoles()->with('role')->get()->pluck('role.name')->toArray();
+            $allowedStatuses = $this->getAllowedStatuses($roleNames);
+
+            if (!in_array($exeat->status, $allowedStatuses)) {
+                return response()->json([
+                    'message' => 'You do not have permission to view this request.'
+                ], 403);
+            }
+        }
+
+        return response()->json([
+            'exeat_request' => $exeat
         ]);
     }
 }
