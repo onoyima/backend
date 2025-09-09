@@ -27,7 +27,9 @@ class DashboardAnalyticsService
                 })->count(),
                 // 'active_exeats' => ExeatRequest::whereIn('status', ['approved', 'signed_out'])->count(),
                 'active_exeats' => ExeatRequest::whereNotIn('status', ['completed', 'rejected'])->count(),
-                'pending_approvals' => ExeatRequest::where('status', 'pending')->count(),
+                'approved_exeats' => ExeatRequest::where('status', 'completed')->count(),
+                'student_away' => ExeatRequest::where('status', 'security_signin')->count(),
+                // 'pending_approvals' => ExeatRequest::where('status', 'pending')->count(),
                 'total_requests_today' => ExeatRequest::whereDate('created_at', today())->count(),
                 'system_uptime' => '99.9%', // This would be calculated from monitoring data
             ];
