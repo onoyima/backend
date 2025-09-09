@@ -20,11 +20,13 @@ class DashboardAnalyticsService
     {
         return Cache::remember('admin_system_overview', 300, function () {
             return [
-                'total_students' => Student::count(),
-                'total_staff' => Staff::whereHas('exeatRoles.role', function($q) {
+                // 'total_students' => Student::count(),
+                'total_students' => ExeatRequest::distinct('student_id')->count('student_id'),
+                'total_staff' => Staff::whereHas('exeatRoles.role', function ($q) {
                     $q->whereIn('name', ['dean', 'housemaster', 'security', 'admin']);
                 })->count(),
-                'active_exeats' => ExeatRequest::whereIn('status', ['approved', 'signed_out'])->count(),
+                // 'active_exeats' => ExeatRequest::whereIn('status', ['approved', 'signed_out'])->count(),
+                'active_exeats' => ExeatRequest::whereNotIn('status', ['completed', 'rejected'])->count(),
                 'pending_approvals' => ExeatRequest::where('status', 'pending')->count(),
                 'total_requests_today' => ExeatRequest::whereDate('created_at', today())->count(),
                 'system_uptime' => '99.9%', // This would be calculated from monitoring data
@@ -65,10 +67,10 @@ class DashboardAnalyticsService
         $startDate = Carbon::now()->subDays($days);
 
         return [
-            'active_users' => Staff::where('updated_at', '>=', $startDate)->count() + 
-                             Student::where('updated_at', '>=', $startDate)->count(),
-            'new_registrations' => Staff::where('created_at', '>=', $startDate)->count() + 
-                                  Student::where('created_at', '>=', $startDate)->count(),
+            'active_users' => Staff::where('updated_at', '>=', $startDate)->count() +
+                Student::where('updated_at', '>=', $startDate)->count(),
+            'new_registrations' => Staff::where('created_at', '>=', $startDate)->count() +
+                Student::where('created_at', '>=', $startDate)->count(),
             'role_distribution' => $this->getRoleDistribution(),
         ];
     }
@@ -99,13 +101,13 @@ class DashboardAnalyticsService
             DB::raw('SUM(CASE WHEN status = "approved" THEN 1 ELSE 0 END) as approved'),
             DB::raw('SUM(CASE WHEN status = "rejected" THEN 1 ELSE 0 END) as rejected')
         )
-        ->where('created_at', '>=', $startDate)
-        ->groupBy('date')
-        ->orderBy('date')
-        ->get();
+            ->where('created_at', '>=', $startDate)
+            ->groupBy('date')
+            ->orderBy('date')
+            ->get();
 
         return [
-            'labels' => $trends->pluck('date')->map(function($date) {
+            'labels' => $trends->pluck('date')->map(function ($date) {
                 return Carbon::parse($date)->format('M d');
             })->toArray(),
             'datasets' => [
@@ -168,22 +170,22 @@ class DashboardAnalyticsService
             DB::raw('DATE(updated_at) as date'),
             DB::raw('COUNT(DISTINCT id) as active_users')
         )
-        ->where('updated_at', '>=', $startDate)
-        ->groupBy('date')
-        ->get();
+            ->where('updated_at', '>=', $startDate)
+            ->groupBy('date')
+            ->get();
 
         $studentActivity = Student::select(
             DB::raw('DATE(updated_at) as date'),
             DB::raw('COUNT(DISTINCT id) as active_users')
         )
-        ->where('updated_at', '>=', $startDate)
-        ->groupBy('date')
-        ->get();
+            ->where('updated_at', '>=', $startDate)
+            ->groupBy('date')
+            ->get();
 
         // Merge and sum the activities by date
         $activity = collect();
         $allDates = $staffActivity->pluck('date')->merge($studentActivity->pluck('date'))->unique();
-        
+
         foreach ($allDates as $date) {
             $staffCount = $staffActivity->where('date', $date)->first()->active_users ?? 0;
             $studentCount = $studentActivity->where('date', $date)->first()->active_users ?? 0;
@@ -192,11 +194,11 @@ class DashboardAnalyticsService
                 'active_users' => $staffCount + $studentCount
             ]);
         }
-        
+
         $activity = $activity->sortBy('date');
 
         return [
-            'labels' => $activity->pluck('date')->map(function($date) {
+            'labels' => $activity->pluck('date')->map(function ($date) {
                 return Carbon::parse($date)->format('M d');
             })->toArray(),
             'data' => $activity->pluck('active_users')->toArray(),
@@ -217,17 +219,17 @@ class DashboardAnalyticsService
             DB::raw('COUNT(*) as total'),
             DB::raw('SUM(CASE WHEN status = "approved" THEN 1 ELSE 0 END) as approved')
         )
-        ->where('created_at', '>=', $startDate)
-        ->groupBy('date')
-        ->orderBy('date')
-        ->get()
-        ->map(function($item) {
-            $item->rate = $item->total > 0 ? round(($item->approved / $item->total) * 100, 2) : 0;
-            return $item;
-        });
+            ->where('created_at', '>=', $startDate)
+            ->groupBy('date')
+            ->orderBy('date')
+            ->get()
+            ->map(function ($item) {
+                $item->rate = $item->total > 0 ? round(($item->approved / $item->total) * 100, 2) : 0;
+                return $item;
+            });
 
         return [
-            'labels' => $rates->pluck('date')->map(function($date) {
+            'labels' => $rates->pluck('date')->map(function ($date) {
                 return Carbon::parse($date)->format('M d');
             })->toArray(),
             'data' => $rates->pluck('rate')->toArray(),
@@ -245,7 +247,7 @@ class DashboardAnalyticsService
             ->latest()
             ->limit($limit)
             ->get()
-            ->map(function($request) {
+            ->map(function ($request) {
                 $latestApproval = $request->approvals->where('status', 'approved')->last();
                 return [
                     'id' => $request->id,
@@ -297,7 +299,7 @@ class DashboardAnalyticsService
             ->latest()
             ->limit(10)
             ->get()
-            ->map(function($request) {
+            ->map(function ($request) {
                 return [
                     'id' => $request->id,
                     'student_name' => $request->student->full_name ?? 'Unknown',
@@ -357,7 +359,7 @@ class DashboardAnalyticsService
         return ExeatRequest::with('student')
             ->where('status', 'signed_out')
             ->get()
-            ->map(function($request) {
+            ->map(function ($request) {
                 return [
                     'id' => $request->id,
                     'student_name' => $request->student->full_name ?? 'Unknown',
@@ -434,28 +436,72 @@ class DashboardAnalyticsService
     }
 
     // Additional methods for other dashboard types would be implemented here
-    public function getStudentAnalytics(int $deanId, int $days) { /* Implementation */ }
-    public function getDepartmentTrendsChart(int $deanId, int $days) { /* Implementation */ }
-    public function getApprovalTimelineChart(int $deanId, int $days) { /* Implementation */ }
-    public function getStudentActivityChart(int $deanId, int $days) { /* Implementation */ }
-    public function getRecentDepartmentRequests(int $deanId, int $limit) { /* Implementation */ }
-    public function getWorkloadStatistics(int $staffId, int $days) { /* Implementation */ }
-    public function getTaskCompletionChart(int $staffId, int $days) { /* Implementation */ }
-    public function getWorkloadTrendsChart(int $staffId, int $days) { /* Implementation */ }
-    public function getStaffRecentActivities(int $staffId, int $limit) { /* Implementation */ }
-    public function getSignInOutStatistics(int $days) { /* Implementation */ }
-    public function getDailyMovementsChart(int $days) { /* Implementation */ }
-    public function getPeakHoursChart(int $days) { /* Implementation */ }
-    public function getRecentMovements(int $limit) { /* Implementation */ }
-    public function getHousemasterOverview(int $housemasterId) { /* Implementation */ }
-    public function getHouseStatistics(int $housemasterId, int $days) { /* Implementation */ }
-    public function getStudentWelfareMetrics(int $housemasterId, int $days) { /* Implementation */ }
-    public function getHouseActivityChart(int $housemasterId, int $days) { /* Implementation */ }
-    public function getStudentBehaviorChart(int $housemasterId, int $days) { /* Implementation */ }
-    public function getRecentHouseActivities(int $housemasterId, int $limit) { /* Implementation */ }
-    public function getUserNotifications(int $userId, int $limit) { /* Implementation */ }
-    public function getQuickStats(int $userId) { /* Implementation */ }
-    public function getCalendarEvents(int $userId) { /* Implementation */ }
+    public function getStudentAnalytics(int $deanId, int $days)
+    { /* Implementation */
+    }
+    public function getDepartmentTrendsChart(int $deanId, int $days)
+    { /* Implementation */
+    }
+    public function getApprovalTimelineChart(int $deanId, int $days)
+    { /* Implementation */
+    }
+    public function getStudentActivityChart(int $deanId, int $days)
+    { /* Implementation */
+    }
+    public function getRecentDepartmentRequests(int $deanId, int $limit)
+    { /* Implementation */
+    }
+    public function getWorkloadStatistics(int $staffId, int $days)
+    { /* Implementation */
+    }
+    public function getTaskCompletionChart(int $staffId, int $days)
+    { /* Implementation */
+    }
+    public function getWorkloadTrendsChart(int $staffId, int $days)
+    { /* Implementation */
+    }
+    public function getStaffRecentActivities(int $staffId, int $limit)
+    { /* Implementation */
+    }
+    public function getSignInOutStatistics(int $days)
+    { /* Implementation */
+    }
+    public function getDailyMovementsChart(int $days)
+    { /* Implementation */
+    }
+    public function getPeakHoursChart(int $days)
+    { /* Implementation */
+    }
+    public function getRecentMovements(int $limit)
+    { /* Implementation */
+    }
+    public function getHousemasterOverview(int $housemasterId)
+    { /* Implementation */
+    }
+    public function getHouseStatistics(int $housemasterId, int $days)
+    { /* Implementation */
+    }
+    public function getStudentWelfareMetrics(int $housemasterId, int $days)
+    { /* Implementation */
+    }
+    public function getHouseActivityChart(int $housemasterId, int $days)
+    { /* Implementation */
+    }
+    public function getStudentBehaviorChart(int $housemasterId, int $days)
+    { /* Implementation */
+    }
+    public function getRecentHouseActivities(int $housemasterId, int $limit)
+    { /* Implementation */
+    }
+    public function getUserNotifications(int $userId, int $limit)
+    { /* Implementation */
+    }
+    public function getQuickStats(int $userId)
+    { /* Implementation */
+    }
+    public function getCalendarEvents(int $userId)
+    { /* Implementation */
+    }
 
     /**
      * Get sanitized audit trail for admin dashboard
@@ -539,10 +585,10 @@ class DashboardAnalyticsService
                 DB::raw('COUNT(*) as total_actions'),
                 DB::raw('COUNT(DISTINCT staff_id) as active_staff')
             )
-            ->where('created_at', '>=', $startDate)
-            ->groupBy('date')
-            ->orderBy('date')
-            ->get();
+                ->where('created_at', '>=', $startDate)
+                ->groupBy('date')
+                ->orderBy('date')
+                ->get();
 
             $actionTypes = AuditLog::select('action', DB::raw('COUNT(*) as count'))
                 ->where('created_at', '>=', $startDate)
@@ -552,7 +598,7 @@ class DashboardAnalyticsService
 
             return [
                 'daily_activity_chart' => [
-                    'labels' => $dailyActivity->pluck('date')->map(function($date) {
+                    'labels' => $dailyActivity->pluck('date')->map(function ($date) {
                         return Carbon::parse($date)->format('M d');
                     })->toArray(),
                     'datasets' => [
@@ -571,12 +617,17 @@ class DashboardAnalyticsService
                     ]
                 ],
                 'action_types_chart' => [
-                    'labels' => $actionTypes->pluck('action')->map(function($action) {
+                    'labels' => $actionTypes->pluck('action')->map(function ($action) {
                         return $this->sanitizeAction($action);
                     })->toArray(),
                     'data' => $actionTypes->pluck('count')->toArray(),
                     'backgroundColor' => [
-                        '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'
+                        '#3B82F6',
+                        '#10B981',
+                        '#F59E0B',
+                        '#EF4444',
+                        '#8B5CF6',
+                        '#EC4899'
                     ]
                 ]
             ];
