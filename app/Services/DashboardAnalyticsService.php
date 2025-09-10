@@ -43,22 +43,115 @@ class DashboardAnalyticsService
     {
         $startDate = Carbon::now()->subDays($days);
 
-        return Cache::remember("exeat_stats_{$days}d", 300, function () use ($startDate) {
-            $totalRequests = ExeatRequest::where('created_at', '>=', $startDate)->count();
-            $approvedRequests = ExeatRequest::where('created_at', '>=', $startDate)
-                ->where('status', 'approved')->count();
-            $rejectedRequests = ExeatRequest::where('created_at', '>=', $startDate)
-                ->where('status', 'rejected')->count();
+        // return Cache::remember("exeat_stats_{$days}d", 300, function () use ($startDate) {
+        // $totalRequests = ExeatRequest::where('created_at', '>=', $startDate)->count();
+        // $approvedRequests = ExeatRequest::where('created_at', '>=', $startDate)
+        //     ->where('status', 'approved')->count();
+        // $rejectedRequests = ExeatRequest::where('created_at', '>=', $startDate)
+        //     ->where('status', 'rejected')->count();
+        $totalRequests = ExeatRequest::count();
+        $approvedRequests = ExeatRequest::whereIn('status', ['completed', 'hostel_signin', 'security_signin', 'security_signout', 'hostel_signout'])->count();
+        $completeRequests = ExeatRequest::where('status', 'completed')->count();
+        $rejectedRequests = ExeatRequest::where('status', 'rejected')->count();
+        $awaitingDeanApproval = ExeatRequest::where('status', 'dean_review')->count();
+        $pending_requests = ExeatRequest::whereNotIn('status', ['completed', 'rejected', 'hostel_signin', 'security_signin', 'security_signout', 'hostel_signout'])->count();
+        $student_outofschool = ExeatRequest::where('status', 'security_signin')->count();
+        $parentRequestpending = ExeatRequest::where('status', 'deputy-dean_review')->count();
+        $today_requests = ExeatRequest::with([
+            'student:id,fname,lname,mname',
+            'student.academics:student_id,matric_no'
+        ])
+            ->whereDate('created_at', today())
+            ->get()
+            ->map(function ($request) {
+                $academic = $request->student->academics->first();
+                return [
+                    'student_id' => $request->student_id,
+                    'student_name' => trim($request->student->fname . ' ' .
+                        ($request->student->mname ? $request->student->mname . ' ' : '') .
+                        $request->student->lname),
+                    'matric_no' => $academic ? $academic->matric_no : 'N/A',
+                    'status' => $request->status,
+                    'created_at' => $request->created_at->format('Y-m-d H:i:s'),
+                    'return_date' => $request->return_date
+                ];
+            });
 
-            return [
-                'total_requests' => $totalRequests,
-                'approved_requests' => $approvedRequests,
-                'rejected_requests' => $rejectedRequests,
-                'pending_requests' => ExeatRequest::where('status', 'pending')->count(),
-                'approval_rate' => $totalRequests > 0 ? round(($approvedRequests / $totalRequests) * 100, 2) : 0,
-                'average_processing_time' => $this->getAverageProcessingTime($startDate),
-            ];
-        });
+        $late_students = ExeatRequest::with([
+            'student:id,fname,lname,mname',
+            'student.academics:student_id,matric_no'
+        ])
+            ->select(
+                'student_id',
+                DB::raw('DATEDIFF(NOW(), return_date) as days_late')
+            )
+            ->where('status', 'security_signin')
+            ->whereDate('return_date', '<', now())
+            ->get()
+            ->map(function ($request) {
+                $academic = $request->student->academics->first();
+                return [
+                    'student_id' => $request->student_id,
+                    'student_name' => trim($request->student->fname . ' ' .
+                        ($request->student->mname ? $request->student->mname . ' ' : '') .
+                        $request->student->lname),
+                    'matric_no' => $academic ? $academic->matric_no : 'N/A',
+                    'days_late' => $request->days_late
+                ];
+            });
+
+        $late_students_count = ExeatRequest::where('status', 'security_signin')
+            ->whereDate('return_date', '<', now())
+            ->count();
+
+        $topStudents = ExeatRequest::with(['student.academics'])
+            ->select('student_id', DB::raw('COUNT(*) as exeat_count'))
+            ->groupBy('student_id')
+            ->orderBy('exeat_count', 'desc')
+            ->limit(10)
+            ->get()
+            ->map(function ($request) {
+                $student = $request->student;
+                $academic = $student->academics->first();
+                return [
+                    'student_id' => $student->id,
+                    'student_name' => trim($student->fname . ' ' .
+                        ($student->mname ? $student->mname . ' ' : '') .
+                        $student->lname),
+                    'matric_no' => $academic ? $academic->matric_no : 'N/A',
+                    'exeat_count' => $request->exeat_count,
+                    'approved_exeats' => ExeatRequest::where('student_id', $student->id)
+                        ->whereIn('status', ['completed', 'hostel_signin', 'security_signin', 'security_signout', 'hostel_signout'])
+                        ->count(),
+                    'rejected_exeats' => ExeatRequest::where('student_id', $student->id)
+                        ->where('status', 'rejected')
+                        ->count(),
+                    'pending_exeats' => ExeatRequest::where('student_id', $student->id)
+                        ->whereNotIn('status', ['completed', 'rejected', 'hostel_signin', 'security_signin', 'security_signout', 'hostel_signout'])
+                        ->count()
+                ];
+            });
+
+
+
+
+        return [
+            'total_requests' => $totalRequests,
+            'approved_requests' => $approvedRequests,
+            'rejected_requests' => $rejectedRequests,
+            'pending_requests' => $pending_requests,
+            'parentRequestpending' => $parentRequestpending,
+            'completeRequests' => $completeRequests,
+            'student_outofschool' => $student_outofschool,
+            'awaitingDeanApproval' => $awaitingDeanApproval,
+            'late_students' => $late_students,
+            'late_students_count' => $late_students_count,
+            'topStudents' => $topStudents,
+            'today_requests' => $today_requests,
+            'approval_rate' => $totalRequests > 0 ? round(($approvedRequests / $totalRequests) * 100, 2) : 0,
+            'average_processing_time' => $this->getAverageProcessingTime($startDate),
+        ];
+        // });
     }
 
     /**
