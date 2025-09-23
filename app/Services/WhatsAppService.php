@@ -5,22 +5,24 @@ namespace App\Services;
 use Exception;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Http;
+use App\Utils\PhoneUtility;
+use Twilio\Rest\Client as TwilioClient;
 
 class WhatsAppService
 {
-    private $phoneNumberId;
-    private $accessToken;
-    private $apiVersion;
-    private $businessAccountId;
-    private $testNumber;
+    private $twilioClient;
+    private $fromNumber;
 
     public function __construct()
     {
-        $this->phoneNumberId = config('services.whatsapp.phone_number_id');
-        $this->accessToken = config('services.whatsapp.token');
-        $this->apiVersion = config('services.whatsapp.api_version', 'v22.0');
-        $this->businessAccountId = config('services.whatsapp.business_account_id');
-        $this->testNumber = config('services.whatsapp.test_number');
+        // Initialize Twilio client if credentials are available
+        if (config('services.twilio.sid') && config('services.twilio.token')) {
+            $this->twilioClient = new TwilioClient(
+                config('services.twilio.sid'),
+                config('services.twilio.token')
+            );
+            $this->fromNumber = config('services.twilio.whatsapp_from');
+        }
     }
 
     /**
@@ -28,102 +30,87 @@ class WhatsAppService
      */
     public function isConfigured(): bool
     {
-        return !empty($this->phoneNumberId) && !empty($this->accessToken);
+        return !empty($this->twilioClient) && !empty($this->fromNumber);
     }
 
     /**
-     * Format phone number for WhatsApp (Nigerian format)
+     * Send a text message via Twilio WhatsApp
+     * 
+     * @param string $to The recipient phone number
+     * @param string $message The message to send
+     * @param bool $useTemplate Whether to use a template for business-initiated messages
+     * @return array Response with success status and details
      */
-    public function formatPhoneNumber(string $phone): string
-    {
-        // Remove any non-digit characters
-        $phone = preg_replace('/[^0-9]/', '', $phone);
-
-        // If starts with 0, replace with 234 (Nigeria country code)
-        if (substr($phone, 0, 1) === '0') {
-            $phone = '234' . substr($phone, 1);
-        }
-
-        // If doesn't start with 234, add it
-        if (substr($phone, 0, 3) !== '234') {
-            $phone = '234' . $phone;
-        }
-
-        return $phone;
-    }
-
-    /**
-     * Send a text message via WhatsApp Business API
-     */
-    public function sendMessage(string $to, string $message): array
+    public function sendMessage(string $to, string $message, bool $useTemplate = true): array
     {
         if (!$this->isConfigured()) {
             throw new Exception('WhatsApp service is not properly configured');
         }
 
-        $formattedPhone = $this->formatPhoneNumber($to);
-        $url = "https://graph.facebook.com/{$this->apiVersion}/{$this->phoneNumberId}/messages";
-
-        $data = [
-            'messaging_product' => 'whatsapp',
-            'to' => $formattedPhone,
-            'type' => 'text',
-            'text' => [
-                'body' => $message
-            ]
-        ];
+        $formattedTo = PhoneUtility::formatForWhatsApp($to);
+        $fromNumber = 'whatsapp:' . $this->fromNumber; // Direct format for Twilio
 
         try {
-            $response = Http::withHeaders([
-                'Authorization' => 'Bearer ' . $this->accessToken,
-                'Content-Type' => 'application/json'
-            ])->timeout(30)->post($url, $data);
-
-            $responseData = $response->json();
-            $success = $response->successful();
-
-            if ($success) {
-                Log::info('WhatsApp message sent successfully', [
-                    'original_to' => $to,
-                    'formatted_to' => $formattedPhone,
-                    'message_id' => $responseData['messages'][0]['id'] ?? null,
-                    'wa_id' => $responseData['contacts'][0]['wa_id'] ?? null,
-                ]);
+            // For business-initiated messages, we need to use a template to avoid error 63016
+            // Error 63016: Failed to send freeform message because you are outside the allowed window
+            if ($useTemplate) {
+                // Use a simple notification template
+                $messageParams = [
+                    'from' => $fromNumber,
+                    'body' => 'Your Veritas University notification is ready: ' . $message
+                ];
             } else {
-                Log::error('WhatsApp API error', [
-                    'original_to' => $to,
-                    'formatted_to' => $formattedPhone,
-                    'http_code' => $response->status(),
-                    'error' => $responseData['error'] ?? 'Unknown error',
-                ]);
+                // Use free-form message (only works within 24-hour conversation window)
+                $messageParams = [
+                    'from' => $fromNumber,
+                    'body' => $message
+                ];
             }
+            
+            // Send WhatsApp message using Twilio
+            $message = $this->twilioClient->messages->create(
+                $formattedTo,
+                $messageParams
+            );
+
+            Log::info('WhatsApp message sent successfully', [
+                'to' => $to,
+                'formatted_to' => $formattedTo,
+                'message_sid' => $message->sid,
+                'status' => $message->status,
+            ]);
 
             return [
-                'success' => $success,
-                'http_code' => $response->status(),
-                'response' => $responseData,
-                'message_id' => $success ? ($responseData['messages'][0]['id'] ?? null) : null,
-                'wa_id' => $success ? ($responseData['contacts'][0]['wa_id'] ?? null) : null,
+                'success' => true,
+                'message_sid' => $message->sid,
+                'status' => $message->status,
+                'date_created' => $message->dateCreated->format('Y-m-d H:i:s'),
+                'date_updated' => $message->dateUpdated->format('Y-m-d H:i:s'),
+                'error_code' => $message->errorCode,
+                'error_message' => $message->errorMessage,
             ];
 
         } catch (Exception $e) {
             Log::error('WhatsApp service exception', [
-                'original_to' => $to,
-                'formatted_to' => $formattedPhone,
+                'to' => $to,
+                'formatted_to' => $formattedTo,
                 'error' => $e->getMessage(),
+                'error_code' => $e->getCode(),
             ]);
 
             return [
                 'success' => false,
                 'error' => $e->getMessage(),
-                'http_code' => 0,
-                'response' => null,
+                'error_code' => $e->getCode(),
             ];
         }
     }
 
     /**
-     * Send a template message via WhatsApp Business API
+     * Send a formatted message via Twilio WhatsApp using templates
+     * 
+     * Note: Twilio WhatsApp requires approved templates for business-initiated messages
+     * This method formats the message according to our template structure
      */
     public function sendTemplate(string $to, string $templateName, array $parameters = [], string $languageCode = 'en'): array
     {
@@ -131,140 +118,107 @@ class WhatsAppService
             throw new Exception('WhatsApp service is not properly configured');
         }
 
-        $formattedPhone = $this->formatPhoneNumber($to);
-        $url = "https://graph.facebook.com/{$this->apiVersion}/{$this->phoneNumberId}/messages";
-
-        $templateData = [
-            'name' => $templateName,
-            'language' => [
-                'code' => $languageCode
-            ]
+        // Convert template and parameters to a formatted message
+        $message = $this->formatTemplateMessage($templateName, $parameters);
+        
+        // Use the standard message sending method with template flag set to true
+        return $this->sendMessage($to, $message, true);
+    }
+    
+    /**
+     * Format a template message with parameters
+     * 
+     * @param string $templateName The name of the template
+     * @param array $parameters The parameters to replace in the template
+     * @return string The formatted message
+     */
+    private function formatTemplateMessage(string $templateName, array $parameters = []): string
+    {
+        // This is a simplified implementation
+        // In a real application, you might want to load templates from a database or config
+        
+        // For Twilio WhatsApp, we need to use approved templates
+        // These templates should match what's approved in your Twilio console
+        $templates = [
+            // Standard templates that should work with Twilio's default approved templates
+            'exeat_request' => "Your Veritas University exeat request has been received. Reason: {{1}}. Duration: {{2}}. Please check your portal for updates.",
+            'notification' => "Your Veritas University notification: {{1}} - {{2}}",
+            'alert' => "ALERT from Veritas University: {{1}} - {{2}}"
         ];
-
-        if (!empty($parameters)) {
-            $templateData['components'] = [
-                [
-                    'type' => 'body',
-                    'parameters' => $parameters
-                ]
-            ];
+        
+        $template = $templates[$templateName] ?? "Your Veritas University notification: {{1}} - {{2}}";
+        
+        // Replace parameters in template
+        foreach ($parameters as $index => $param) {
+            $value = $param['text'] ?? $param['value'] ?? '';
+            $template = str_replace("{{" . ($index + 1) . "}}", $value, $template);
         }
-
-        $data = [
-            'messaging_product' => 'whatsapp',
-            'to' => $formattedPhone,
-            'type' => 'template',
-            'template' => $templateData
-        ];
-
-        try {
-            $response = Http::withHeaders([
-                'Authorization' => 'Bearer ' . $this->accessToken,
-                'Content-Type' => 'application/json'
-            ])->timeout(30)->post($url, $data);
-
-            $responseData = $response->json();
-            $success = $response->successful();
-
-            if ($success) {
-                Log::info('WhatsApp template sent successfully', [
-                    'original_to' => $to,
-                    'formatted_to' => $formattedPhone,
-                    'template' => $templateName,
-                    'message_id' => $responseData['messages'][0]['id'] ?? null,
-                ]);
-            } else {
-                Log::error('WhatsApp template API error', [
-                    'original_to' => $to,
-                    'formatted_to' => $formattedPhone,
-                    'template' => $templateName,
-                    'http_code' => $response->status(),
-                    'error' => $responseData['error'] ?? 'Unknown error',
-                ]);
-            }
-
-            return [
-                'success' => $success,
-                'http_code' => $response->status(),
-                'response' => $responseData,
-                'message_id' => $success ? ($responseData['messages'][0]['id'] ?? null) : null,
-            ];
-
-        } catch (Exception $e) {
-            Log::error('WhatsApp template service exception', [
-                'original_to' => $to,
-                'formatted_to' => $formattedPhone,
-                'template' => $templateName,
-                'error' => $e->getMessage(),
-            ]);
-
-            return [
-                'success' => false,
-                'error' => $e->getMessage(),
-                'http_code' => 0,
-                'response' => null,
-            ];
-        }
+        
+        return $template;
     }
 
     /**
-     * Get WhatsApp Business Account information
+     * Get WhatsApp account information from Twilio
      */
-    public function getBusinessAccountInfo(): array
+    public function getAccountInfo(): array
     {
-        if (!$this->businessAccountId || !$this->accessToken) {
-            return ['success' => false, 'error' => 'Business account ID or access token not configured'];
+        if (!$this->isConfigured()) {
+            return ['success' => false, 'error' => 'WhatsApp service is not properly configured'];
         }
 
-        $url = "https://graph.facebook.com/{$this->apiVersion}/{$this->businessAccountId}";
-
         try {
-            $response = Http::withHeaders([
-                'Authorization' => 'Bearer ' . $this->accessToken,
-            ])->timeout(30)->get($url);
-
+            // Get Twilio account information
+            $account = $this->twilioClient->account->fetch();
+            
             return [
-                'success' => $response->successful(),
-                'http_code' => $response->status(),
-                'data' => $response->json(),
+                'success' => true,
+                'account_sid' => $account->sid,
+                'account_name' => $account->friendlyName,
+                'account_status' => $account->status,
+                'account_type' => $account->type,
+                'whatsapp_from' => $this->fromNumber,
+                'whatsapp_formatted' => PhoneUtility::formatForWhatsApp($this->fromNumber),
             ];
 
         } catch (Exception $e) {
             return [
                 'success' => false,
                 'error' => $e->getMessage(),
-                'http_code' => 0,
+                'error_code' => $e->getCode(),
             ];
         }
     }
-
+    
     /**
-     * Get phone number information
+     * Check message status
+     * 
+     * @param string $messageSid The Twilio message SID
+     * @return array The message status information
      */
-    public function getPhoneNumberInfo(): array
+    public function checkMessageStatus(string $messageSid): array
     {
-        if (!$this->phoneNumberId || !$this->accessToken) {
-            return ['success' => false, 'error' => 'Phone number ID or access token not configured'];
+        if (!$this->isConfigured()) {
+            return ['success' => false, 'error' => 'WhatsApp service is not properly configured'];
         }
-
-        $url = "https://graph.facebook.com/{$this->apiVersion}/{$this->phoneNumberId}";
-
+        
         try {
-            $response = Http::withHeaders([
-                'Authorization' => 'Bearer ' . $this->accessToken,
-            ])->timeout(30)->get($url);
-
+            $message = $this->twilioClient->messages($messageSid)->fetch();
+            
             return [
-                'success' => $response->successful(),
-                'http_code' => $response->status(),
-                'data' => $response->json(),
+                'success' => true,
+                'message_sid' => $message->sid,
+                'status' => $message->status,
+                'date_created' => $message->dateCreated->format('Y-m-d H:i:s'),
+                'date_updated' => $message->dateUpdated->format('Y-m-d H:i:s'),
+                'error_code' => $message->errorCode,
+                'error_message' => $message->errorMessage,
             ];
-
+            
         } catch (Exception $e) {
             return [
                 'success' => false,
                 'error' => $e->getMessage(),
-                'http_code' => 0,
+                'error_code' => $e->getCode(),
             ];
         }
     }
@@ -285,5 +239,55 @@ class WhatsAppService
         $message .= "_This link expires in 24 hours._";
 
         return $message;
+    }
+    
+    /**
+     * Get delivery logs for WhatsApp messages
+     * 
+     * @param int $limit The maximum number of logs to retrieve
+     * @return array The delivery logs
+     */
+    public function getDeliveryLogs(int $limit = 20): array
+    {
+        if (!$this->isConfigured()) {
+            return ['success' => false, 'error' => 'WhatsApp service is not properly configured'];
+        }
+        
+        try {
+            $messages = $this->twilioClient->messages->read(
+                ['limit' => $limit]
+            );
+            
+            $logs = [];
+            foreach ($messages as $message) {
+                // Only include WhatsApp messages
+                if (strpos($message->from, 'whatsapp:') === 0 || strpos($message->to, 'whatsapp:') === 0) {
+                    $logs[] = [
+                        'message_sid' => $message->sid,
+                        'from' => $message->from,
+                        'to' => $message->to,
+                        'status' => $message->status,
+                        'direction' => $message->direction,
+                        'date_created' => $message->dateCreated->format('Y-m-d H:i:s'),
+                        'date_updated' => $message->dateUpdated->format('Y-m-d H:i:s'),
+                        'error_code' => $message->errorCode,
+                        'error_message' => $message->errorMessage,
+                    ];
+                }
+            }
+            
+            return [
+                'success' => true,
+                'logs' => $logs,
+                'count' => count($logs),
+            ];
+            
+        } catch (Exception $e) {
+            return [
+                'success' => false,
+                'error' => $e->getMessage(),
+                'error_code' => $e->getCode(),
+            ];
+        }
     }
 }

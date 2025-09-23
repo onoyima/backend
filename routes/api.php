@@ -26,6 +26,7 @@ use App\Http\Controllers\ExeatHistoryController;
 use App\Http\Controllers\StaffExeatStatisticsController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\AdminBulkOperationsController;
+use App\Http\Controllers\StudentExeatDebtController;
 
 /*
 |--------------------------------------------------------------------------
@@ -63,6 +64,14 @@ Route::middleware('auth:sanctum')->group(function () {
       // ✅ ADD THESE TWO ROUTES:
         Route::get('/exeat-categories', [StudentExeatRequestController::class, 'categories']);
         Route::get('/profile', [StudentExeatRequestController::class, 'profile']);
+        
+        // Student debt routes
+        Route::prefix('debts')->group(function () {
+            Route::get('/', [StudentExeatDebtController::class, 'index']);
+            Route::get('/{id}', [StudentExeatDebtController::class, 'show']);
+            Route::post('/{id}/payment-proof', [StudentExeatDebtController::class, 'updatePaymentProof']);
+            Route::get('/{id}/verify-payment', [StudentExeatDebtController::class, 'verifyPayment'])->name('student.debts.verify-payment');
+        });
 
         // Student notification routes
         Route::prefix('notifications')->group(function () {
@@ -84,9 +93,11 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/dashboard', [StaffExeatRequestController::class, 'dashboard']);
         Route::get('/exeat-requests', [StaffExeatRequestController::class, 'index']);
         Route::get('/exeat-requests/{id}', [StaffExeatRequestController::class, 'show']);
+        Route::put('/exeat-requests/{id}', [StaffExeatRequestController::class, 'edit']);
         Route::post('/exeat-requests/{id}/approve', [StaffExeatRequestController::class, 'approve']);
         Route::post('/exeat-requests/{id}/reject', [StaffExeatRequestController::class, 'reject']);
         Route::post('/exeat-requests/{id}/send-parent-consent', [StaffExeatRequestController::class, 'sendParentConsent']);
+        Route::post('/exeat-requests/{id}/send-comment', [StaffExeatRequestController::class, 'sendComment']);
         Route::get('/exeat-requests/{id}/history', [StaffExeatRequestController::class, 'history']);
         Route::get('/exeat-requests/role-history', [StaffExeatRequestController::class, 'roleHistory']);
 
@@ -134,6 +145,14 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/staff/{id}', [AdminStaffController::class, 'destroy']);
     Route::post('/staff/{id}/assign-exeat-role', [AdminStaffController::class, 'assignExeatRole']);
     Route::delete('/staff/{id}/unassign-exeat-role', [AdminStaffController::class, 'unassignExeatRole']);
+    Route::put('/exeat-requests/{id}', [AdminExeatController::class, 'edit']);
+    
+    // Student debt routes
+    Route::prefix('student-debts')->group(function () {
+        Route::get('/', [StudentExeatDebtController::class, 'index']);
+        Route::get('/{id}', [StudentExeatDebtController::class, 'show']);
+        Route::post('/{id}/clear', [StudentExeatDebtController::class, 'clearDebt']);
+    });
 
     // Admin notification routes
     Route::prefix('notifications')->group(function () {
@@ -163,6 +182,14 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::middleware('role:dean')->group(function () {
         Route::get('/dean/dashboard', [StaffExeatRequestController::class, 'deanDashboard']);
         Route::get('/dean/exeat-requests', [StaffExeatRequestController::class, 'deanRequests']);
+        Route::put('/dean/exeat-requests/{id}', [DeanController::class, 'edit']);
+        
+        // Dean student debt routes
+        Route::prefix('dean/student-debts')->group(function () {
+            Route::get('/', [DeanController::class, 'studentDebts']);
+            Route::get('/{id}', [DeanController::class, 'showStudentDebt']);
+            Route::post('/{id}/clear', [DeanController::class, 'clearStudentDebt']);
+        });
 
         // Dean notification routes
         Route::prefix('dean/notifications')->group(function () {

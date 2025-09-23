@@ -108,7 +108,7 @@ class BirthdayController extends Controller
             'date' => Carbon::now()->toDayDateTimeString(),
             'recipients' => $recipients
         ], function ($message) {
-            $message->to('onoyimab@veritas.edu.ng', 'Birthday Admin')
+            $message->to(env('ADMIN_EMAIL'), 'Birthday Admin')
                     ->subject('Daily Birthday Email Summary');
         });
     }
@@ -219,7 +219,7 @@ class BirthdayController extends Controller
         'date' => Carbon::now()->toDayDateTimeString(),
         'recipients' => $recipients
     ], function ($message) {
-        $message->to('onoyimab@veritas.edu.ng', 'Birthday Admin')
+        $message->to(env('ADMIN_EMAIL'), 'Birthday Admin')
                 ->subject('Direct Birthday Email Summary (Manual Trigger)');
     });
 }

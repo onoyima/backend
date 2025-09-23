@@ -89,6 +89,14 @@ class ExeatRequest extends Model
     {
         return $this->belongsTo(ExeatCategory::class);
     }
+    
+    /**
+     * Get the debts associated with this exeat request.
+     */
+    public function debts()
+    {
+        return $this->hasMany(StudentExeatDebt::class, 'exeat_request_id');
+    }
 
     // Helper method to check if medical review is required
     public function needsMedicalReview(): bool
@@ -145,7 +153,7 @@ class ExeatRequest extends Model
             $message .= "— VERITAS University Exeat Management System";
             
             \Mail::raw($message, function ($mail) use ($student) {
-                $mail->to('onoyimab@veritas.edu.ng', 'Academic Administrator')
+                $mail->to(env('ACADEMIC_ADMIN_EMAIL'), 'Academic Administrator')
                      ->subject("Weekday Absence Alert - {$student->fname} {$student->lname} ({$this->matric_no})");
             });
             

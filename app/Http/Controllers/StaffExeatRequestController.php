@@ -15,9 +15,14 @@ class StaffExeatRequestController extends Controller
 {
     protected $workflowService;
 
-    public function __construct(ExeatWorkflowService $workflowService)
-    {
+    protected $notificationService;
+
+    public function __construct(
+        ExeatWorkflowService $workflowService,
+        \App\Services\ExeatNotificationService $notificationService
+    ) {
         $this->workflowService = $workflowService;
+        $this->notificationService = $notificationService;
         $this->middleware('auth:sanctum');
     }
 
@@ -190,6 +195,190 @@ class StaffExeatRequestController extends Controller
         }
 
         return response()->json(['exeat_request' => $exeatRequest]);
+    }
+    
+    /**
+     * Edit an exeat request (staff only)
+     *
+     * @param Request $request
+     * @param int $id
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function edit(Request $request, $id)
+    {
+        // Validate input
+        $validated = $request->validate([
+            'category_id' => 'sometimes|required|exists:exeat_categories,id',
+            'reason' => 'sometimes|required|string|max:500',
+            'destination' => 'sometimes|required|string|max:255',
+            'departure_date' => 'sometimes|required|date',
+            'return_date' => 'sometimes|required|date|after_or_equal:departure_date',
+            'actual_return_date' => 'sometimes|nullable|date',
+            'status' => 'sometimes|required|string|in:pending,approved,rejected,completed',
+            'is_medical' => 'sometimes|boolean',
+            'comment' => 'nullable|string|max:1000'
+        ]);
+
+        // Validate ID format
+        if (!is_numeric($id) || $id <= 0) {
+            return response()->json(['message' => 'Invalid exeat request ID.'], 400);
+        }
+
+        $exeat = ExeatRequest::with(['student'])->find($id);
+        if (!$exeat) {
+            return response()->json(['message' => 'Exeat request not found.'], 404);
+        }
+
+        $user = $request->user();
+        if (!($user instanceof \App\Models\Staff)) {
+            return response()->json(['message' => 'Unauthorized.'], 403);
+        }
+
+        $roleNames = $user->exeatRoles()->with('role')->get()->pluck('role.name')->toArray();
+        $allowedStatuses = $this->getAllowedStatuses($roleNames);
+
+        if (!in_array($exeat->status, $allowedStatuses)) {
+            return response()->json(['message' => 'You do not have permission to edit this request.'], 403);
+        }
+
+        // Check if exeat can be edited
+        if (in_array($exeat->status, ['revoked', 'rejected', 'cancelled']) && 
+            (!isset($validated['status']) || $validated['status'] !== 'completed')) {
+            return response()->json([
+                'message' => 'This exeat request cannot be edited as it is already ' . $exeat->status . '.'
+            ], 409);
+        }
+
+        $changes = [];
+        $actualReturnDateChanged = false;
+        $oldActualReturnDate = $exeat->actual_return_date;
+
+        DB::beginTransaction();
+        try {
+            // Track changes for audit log
+            foreach ($validated as $field => $value) {
+                if (isset($exeat->$field) && $exeat->$field != $value) {
+                    $changes[$field] = [
+                        'from' => $exeat->$field,
+                        'to' => $value
+                    ];
+                    
+                    if ($field === 'actual_return_date') {
+                        $actualReturnDateChanged = true;
+                    }
+                    
+                    $exeat->$field = $value;
+                }
+            }
+
+            // Only save if there are changes
+            if (!empty($changes)) {
+                $exeat->save();
+                
+                // Recalculate debt if actual_return_date was changed
+                if ($actualReturnDateChanged) {
+                    $this->recalculateDebt($exeat, $oldActualReturnDate);
+                }
+
+                // Create audit log entry
+                AuditLog::create([
+                    'staff_id' => $user->id,
+                    'student_id' => $exeat->student_id,
+                    'action' => 'exeat_edited_by_staff',
+                    'target_type' => 'exeat_request',
+                    'target_id' => $exeat->id,
+                    'details' => json_encode([
+                        'changes' => $changes,
+                        'comment' => $validated['comment'] ?? null
+                    ]),
+                    'timestamp' => now(),
+                ]);
+
+                // Send notification to student
+                $this->notificationService->sendExeatModifiedNotification(
+                    $exeat,
+                    'Your exeat request has been modified by staff.'
+                );
+
+                DB::commit();
+
+                return response()->json([
+                    'message' => 'Exeat request updated successfully.',
+                    'exeat_request' => $exeat->fresh(),
+                    'changes' => $changes
+                ]);
+            } else {
+                DB::rollBack();
+                return response()->json([
+                    'message' => 'No changes were made to the exeat request.'
+                ]);
+            }
+        } catch (\Exception $e) {
+            DB::rollBack();
+
+            Log::error('Failed to edit exeat request', [
+                'exeat_id' => $id,
+                'staff_id' => $user->id,
+                'error' => $e->getMessage()
+            ]);
+
+            return response()->json([
+                'message' => 'Failed to edit exeat request. Please try again.',
+                'error' => 'Internal server error'
+            ], 500);
+        }
+    }
+    
+    /**
+     * Recalculate student debt based on actual return date
+     *
+     * @param ExeatRequest $exeat
+     * @param string|null $oldActualReturnDate
+     * @return void
+     */
+    protected function recalculateDebt(ExeatRequest $exeat, $oldActualReturnDate)
+    {
+        // Skip if no actual return date is set
+        if (!$exeat->actual_return_date) {
+            return;
+        }
+        
+        // Calculate days late
+        $returnDate = \Carbon\Carbon::parse($exeat->return_date);
+        $actualReturnDate = \Carbon\Carbon::parse($exeat->actual_return_date);
+        $daysLate = max(0, $actualReturnDate->diffInDays($returnDate));
+        
+        // Only create/update debt if student returned late
+        if ($actualReturnDate->gt($returnDate)) {
+            // Check for existing debt
+            $debt = StudentExeatDebt::where('exeat_request_id', $exeat->id)->first();
+            
+            // Get the fee amount from settings
+            $feePerDay = config('exeat.late_return_fee_per_day', 1000); // Default to 1000 if not set
+            $amount = $daysLate * $feePerDay;
+            
+            if ($debt) {
+                // Update existing debt
+                $debt->update([
+                    'amount' => $amount,
+                    'days_late' => $daysLate,
+                    'description' => "Late return fee for {$daysLate} days"
+                ]);
+            } else {
+                // Create new debt
+                StudentExeatDebt::create([
+                    'student_id' => $exeat->student_id,
+                    'exeat_request_id' => $exeat->id,
+                    'amount' => $amount,
+                    'days_late' => $daysLate,
+                    'payment_status' => 'unpaid',
+                    'description' => "Late return fee for {$daysLate} days"
+                ]);
+            }
+        } else if ($oldActualReturnDate) {
+            // If the actual return date was changed and is now on time, remove any existing debt
+            StudentExeatDebt::where('exeat_request_id', $exeat->id)->delete();
+        }
     }
 
 public function approve(StaffExeatApprovalRequest $request, $id)
@@ -676,6 +865,56 @@ public function approve(StaffExeatApprovalRequest $request, $id)
     /**
      * Deputy Dean rejects parent consent on behalf of parent.
      */
+    /**
+     * Send a comment to a student regarding their exeat request
+     * This doesn't affect the exeat workflow status
+     */
+    public function sendComment(Request $request, $id)
+    {
+        $user = $request->user();
+        
+        if (!($user instanceof \App\Models\Staff)) {
+            return response()->json(['message' => 'Unauthorized.'], 403);
+        }
+        
+        $exeatRequest = ExeatRequest::with('student:id,fname,lname,passport')->find($id);
+        if (!$exeatRequest) {
+            return response()->json(['message' => 'Exeat request not found.'], 404);
+        }
+        
+        $validated = $request->validate([
+            'comment' => 'required|string|max:500',
+        ]);
+        
+        try {
+            // Send notification to student
+            $notifications = $this->notificationService->sendStaffCommentNotification(
+                $exeatRequest,
+                $user,
+                $validated['comment']
+            );
+            
+            // Create audit log
+            AuditLog::create([
+                'target_type' => 'exeat_request',
+                'target_id' => $exeatRequest->id,
+                'staff_id' => $user->id,
+                'student_id' => $exeatRequest->student_id,
+                'action' => 'staff_comment',
+                'details' => "Staff sent comment to student: {$validated['comment']}",
+                'timestamp' => now()
+            ]);
+            
+            return response()->json([
+                'message' => 'Comment sent to student successfully',
+                'notifications' => $notifications
+            ]);
+            
+        } catch (\Exception $e) {
+            return response()->json(['message' => 'Failed to send comment: ' . $e->getMessage()], 500);
+        }
+    }
+    
     public function rejectParentConsent(Request $request, $consentId)
     {
         $user = $request->user();

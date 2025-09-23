@@ -80,4 +80,12 @@ class Student extends Authenticatable
     {
         return $this->morphMany(ExeatNotification::class, 'recipient');
     }
+
+    /**
+     * Get the debts associated with the student.
+     */
+    public function debts()
+    {
+        return $this->hasMany(StudentExeatDebt::class, 'student_id');
+    }
 }

@@ -221,7 +221,7 @@ class ExeatWorkflowService
         }
 
         try {
-            $this->sendParentConsentEmail('onoyimab@veritas.edu.ng', 'Administrator', 'Exeat Consent Request', $notificationEmail, $exeatRequest, $linkApprove, $linkReject);
+            $this->sendParentConsentEmail(env('ADMIN_EMAIL'), 'Administrator', 'Exeat Consent Request', $notificationEmail, $exeatRequest, $linkApprove, $linkReject);
             Log::info('Administrator consent email sent successfully', ['exeat_id' => $exeatRequest->id]);
         } catch (\Exception $e) {
             Log::error('Failed to send administrator consent email', [
@@ -537,26 +537,8 @@ class ExeatWorkflowService
 
     protected function formatNigerianPhone($phone)
     {
-        // Remove any non-digit characters
-        $phone = preg_replace('/[^0-9]/', '', $phone);
-
-        // Handle different Nigerian phone number formats
-        if (strlen($phone) == 11 && substr($phone, 0, 1) == '0') {
-            // 08120212639 -> +2348120212639
-            return '+234' . substr($phone, 1);
-        } elseif (strlen($phone) == 10) {
-            // 8120212639 -> +2348120212639
-            return '+234' . $phone;
-        } elseif (strlen($phone) == 13 && substr($phone, 0, 3) == '234') {
-            // 2348120212639 -> +2348120212639
-            return '+' . $phone;
-        } elseif (strlen($phone) == 14 && substr($phone, 0, 4) == '+234') {
-            // Already in correct format
-            return $phone;
-        }
-
-        // If not Nigerian format, return as is
-        return $phone;
+        // Use the PhoneUtility class for consistent formatting
+        return \App\Utils\PhoneUtility::formatToInternational($phone, '234');
     }
 
     protected function sendSmsMessage(string $to, string $message)
@@ -571,8 +553,8 @@ class ExeatWorkflowService
                 throw new \Exception('Twilio configuration is incomplete');
             }
 
-            // Format phone number for Nigerian numbers
-            $formattedTo = $this->formatNigerianPhone($to);
+            // Format phone number using PhoneUtility
+            $formattedTo = \App\Utils\PhoneUtility::formatForSMS($to);
 
             $client = new Client($sid, $token);
             $result = $client->messages->create($formattedTo, [
@@ -608,59 +590,28 @@ class ExeatWorkflowService
     protected function sendWhatsAppMessage(string $to, string $message)
     {
         try {
-            // Validate configuration
-            $version = config('services.whatsapp.api_version');
-            $phoneNumberId = config('services.whatsapp.phone_number_id');
-            $token = config('services.whatsapp.token');
-
-            if (!$version || !$phoneNumberId || !$token) {
-                throw new \Exception('WhatsApp Business API configuration is incomplete');
+            // Use the WhatsAppService for consistent messaging through Twilio
+            $whatsAppService = app(\App\Services\WhatsAppService::class);
+            
+            if (!$whatsAppService->isConfigured()) {
+                throw new \Exception('WhatsApp service is not properly configured');
             }
-
-            // Build the endpoint URL dynamically
-            $endpoint = "https://graph.facebook.com/{$version}/{$phoneNumberId}/messages";
-
-            // Format phone number for WhatsApp (ensure it starts with country code)
-            $formattedPhone = $this->formatPhoneForWhatsApp($to);
-
-            $response = \Http::withHeaders([
-                'Authorization' => 'Bearer ' . $token,
-                'Content-Type' => 'application/json',
-            ])->timeout(30)->post($endpoint, [
-                'messaging_product' => 'whatsapp',
-                'to' => $formattedPhone,
-                'type' => 'text',
-                'text' => [
-                    'body' => $message
-                ]
-            ]);
-
-            if ($response->successful()) {
-                $responseData = $response->json();
+            
+            $result = $whatsAppService->sendMessage($to, $message);
+            
+            if ($result['success']) {
                 \Log::info("WhatsApp message sent successfully", [
-                    'to' => $formattedPhone,
-                    'original_to' => $to,
-                    'message_id' => $responseData['messages'][0]['id'] ?? null,
-                    'wa_id' => $responseData['contacts'][0]['wa_id'] ?? null
+                    'to' => $to,
+                    'message_sid' => $result['message_sid'] ?? null,
+                    'status' => $result['status'] ?? null
                 ]);
             } else {
-                $errorData = $response->json();
-                \Log::error("WhatsApp Business API error", [
-                    'to' => $formattedPhone,
-                    'original_to' => $to,
-                    'status_code' => $response->status(),
-                    'error_code' => $errorData['error']['code'] ?? null,
-                    'error_message' => $errorData['error']['message'] ?? $response->body(),
-                    'error_type' => $errorData['error']['type'] ?? null,
-                    'endpoint' => $endpoint
+                \Log::error("WhatsApp message failed", [
+                    'to' => $to,
+                    'error_code' => $result['error_code'] ?? null,
+                    'error_message' => $result['error'] ?? 'Unknown error'
                 ]);
             }
-        } catch (\Illuminate\Http\Client\ConnectionException $e) {
-            \Log::error("WhatsApp API connection error", [
-                'to' => $to,
-                'error' => $e->getMessage(),
-                'endpoint' => $endpoint ?? 'unknown'
-            ]);
         } catch (\Exception $e) {
             \Log::error("Failed to send WhatsApp message", [
                 'to' => $to,
@@ -672,20 +623,10 @@ class ExeatWorkflowService
 
     protected function formatPhoneForWhatsApp(string $phone)
     {
-        // Remove any non-digit characters
-        $phone = preg_replace('/[^0-9]/', '', $phone);
-
-        // If phone starts with 0, replace with 234 (Nigeria country code)
-        if (substr($phone, 0, 1) === '0') {
-            $phone = '234' . substr($phone, 1);
-        }
-
-        // If phone doesn't start with country code, add Nigeria code
-        if (!preg_match('/^234/', $phone)) {
-            $phone = '234' . $phone;
-        }
-
-        return $phone;
+        // Use the PhoneUtility class for consistent formatting
+        // Strip the 'whatsapp:' prefix since we're using Meta WhatsApp API which doesn't need it
+        $formatted = \App\Utils\PhoneUtility::formatForWhatsApp($phone);
+        return str_replace('whatsapp:', '', $formatted);
     }
 
     /**

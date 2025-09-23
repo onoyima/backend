@@ -9,10 +9,12 @@ use App\Models\Staff;
 use App\Models\StudentContact;
 use App\Jobs\SendNotificationJob;
 use App\Events\NotificationSent;
+use App\Utils\PhoneUtility;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Http;
+use Twilio\Rest\Client as TwilioClient;
 use Exception;
 
 class NotificationDeliveryService
@@ -23,7 +25,8 @@ class NotificationDeliveryService
     }
 
     /**
-     * Queue notification for delivery.
+     * Deliver notification directly instead of queuing.
+     * Modified to avoid using queue since jobs table doesn't exist.
      */
     public function queueNotificationDelivery(ExeatNotification $notification): void
     {
@@ -37,11 +40,11 @@ class NotificationDeliveryService
                 continue;
             }
             
-            // Queue immediate delivery
-            SendNotificationJob::dispatch($notification, $method)
-                ->onQueue('notifications');
+            // Deliver immediately instead of queuing
+            $this->deliverNotification($notification, $method);
         }
     }
+
 
     /**
      * Deliver notification synchronously without using queues.
@@ -162,7 +165,7 @@ class NotificationDeliveryService
     }
 
     /**
-     * Deliver SMS notification.
+     * Deliver SMS notification using Twilio.
      */
     protected function deliverSMS(ExeatNotification $notification, NotificationDeliveryLog $log): bool
     {
@@ -177,39 +180,85 @@ class NotificationDeliveryService
         }
         
         try {
-            // Using a generic SMS service - replace with your actual SMS provider
-            $response = Http::post(config('services.sms.endpoint'), [
-                'to' => $recipient['phone'],
-                'message' => $this->formatSMSMessage($notification),
-                'api_key' => config('services.sms.api_key')
-            ]);
+            // Format phone number for SMS using PhoneUtility
+            $formattedPhone = PhoneUtility::formatForSMS($recipient['phone']);
             
-            if ($response->successful()) {
-                $responseData = $response->json();
-                
-                $log->update([
-                    'status' => NotificationDeliveryLog::STATUS_DELIVERED,
-                    'delivered_at' => now(),
-                    'metadata' => [
-                        'delivery_provider' => 'sms_service',
-                        'provider_message_id' => $responseData['message_id'] ?? null
-                    ]
-                ]);
-                
-                return true;
-            } else {
+            // Check if Twilio is configured
+            if (!config('services.twilio.sid') || !config('services.twilio.token') || !config('services.twilio.sms_from')) {
                 $log->update([
                     'status' => NotificationDeliveryLog::STATUS_FAILED,
-                    'error_message' => 'SMS service returned error: ' . $response->body()
+                    'error_message' => 'Twilio SMS service is not properly configured'
                 ]);
-                
                 return false;
             }
+            
+            // Using Twilio for SMS delivery
+            $twilioSid = config('services.twilio.sid');
+            $twilioToken = config('services.twilio.token');
+            $twilioFrom = config('services.twilio.sms_from');
+            
+            $client = new TwilioClient($twilioSid, $twilioToken);
+            
+            // Note on custom sender names for SMS:
+            // Most SMS providers (including Twilio) don't support arbitrary alphanumeric sender names directly
+            // due to carrier restrictions. There are two main approaches to customize the sender name:
+            //
+            // 1. Use a Messaging Service SID instead of a phone number
+            //    - Create a Messaging Service in Twilio console
+            //    - Configure the sender_id for the service
+            //    - Use the Messaging Service SID instead of a phone number
+            //
+            // 2. Use Alphanumeric Sender ID where supported
+            //    - This feature is available in some countries but not all
+            //    - Register an Alphanumeric Sender ID in Twilio console
+            //    - Use it as the 'from' parameter
+            
+            // Get a messaging service SID from config if available
+            $messagingServiceSid = config('services.twilio.messaging_service_sid');
+            $from = $messagingServiceSid ?: $twilioFrom;
+            
+            // For staff comments, we want to use a branded sender name if possible
+            if ($notification->type === ExeatNotification::TYPE_STAFF_COMMENT) {
+                // If we have a messaging service configured, we can use it to send with a branded name
+                // Otherwise, we'll use the default Twilio phone number
+                
+                // Add the sender name to the beginning of the message as a workaround
+                $message = $client->messages->create(
+                    $formattedPhone,
+                    [
+                        'from' => $from,
+                        'body' => "VERITAS EXEAT: " . $this->formatSMSMessage($notification)
+                    ]
+                );
+            } else {
+                // For other notification types, use standard format
+                $message = $client->messages->create(
+                    $formattedPhone,
+                    [
+                        'from' => $from,
+                        'body' => $this->formatSMSMessage($notification)
+                    ]
+                );
+            }
+            
+            $log->update([
+                'status' => NotificationDeliveryLog::STATUS_DELIVERED,
+                'delivered_at' => now(),
+                'metadata' => [
+                    'delivery_provider' => 'twilio_sms',
+                    'provider_message_id' => $message->sid,
+                    'status' => $message->status,
+                    'date_created' => $message->dateCreated->format('Y-m-d H:i:s'),
+                    'date_updated' => $message->dateUpdated->format('Y-m-d H:i:s')
+                ]
+            ]);
+            
+            return true;
             
         } catch (Exception $e) {
             $log->update([
                 'status' => NotificationDeliveryLog::STATUS_FAILED,
-                'error_message' => $e->getMessage()
+                'error_message' => 'Twilio SMS error: ' . $e->getMessage()
             ]);
             
             return false;
@@ -217,7 +266,7 @@ class NotificationDeliveryService
     }
 
     /**
-     * Deliver WhatsApp notification.
+     * Deliver WhatsApp notification using Twilio.
      */
     protected function deliverWhatsApp(ExeatNotification $notification, NotificationDeliveryLog $log): bool
     {
@@ -232,28 +281,32 @@ class NotificationDeliveryService
         }
         
         try {
-            // Using WhatsApp Business API - replace with your actual WhatsApp provider
-            $response = Http::withHeaders([
-                'Authorization' => 'Bearer ' . config('services.whatsapp.token'),
-                'Content-Type' => 'application/json'
-            ])->post(config('services.whatsapp.endpoint'), [
-                'messaging_product' => 'whatsapp',
-                'to' => $recipient['phone'],
-                'type' => 'text',
-                'text' => [
-                    'body' => $this->formatWhatsAppMessage($notification)
-                ]
-            ]);
+            // Use the WhatsAppService for consistent messaging through Twilio
+            $whatsAppService = app(\App\Services\WhatsAppService::class);
             
-            if ($response->successful()) {
-                $responseData = $response->json();
-                
+            if (!$whatsAppService->isConfigured()) {
+                $log->update([
+                    'status' => NotificationDeliveryLog::STATUS_FAILED,
+                    'error_message' => 'WhatsApp service is not properly configured'
+                ]);
+                return false;
+            }
+            
+            $message = $this->formatWhatsAppMessage($notification);
+            // Format phone number for WhatsApp using PhoneUtility
+            $formattedPhone = PhoneUtility::formatForWhatsApp($recipient['phone']);
+            $result = $whatsAppService->sendMessage($formattedPhone, $message);
+            
+            if ($result['success']) {
                 $log->update([
                     'status' => NotificationDeliveryLog::STATUS_DELIVERED,
                     'delivered_at' => now(),
                     'metadata' => [
-                        'delivery_provider' => 'whatsapp_business',
-                        'provider_message_id' => $responseData['messages'][0]['id'] ?? null
+                        'delivery_provider' => 'twilio_whatsapp',
+                        'provider_message_id' => $result['message_sid'] ?? null,
+                        'status' => $result['status'] ?? null,
+                        'date_created' => $result['date_created'] ?? null,
+                        'date_updated' => $result['date_updated'] ?? null
                     ]
                 ]);
                 
@@ -261,7 +314,10 @@ class NotificationDeliveryService
             } else {
                 $log->update([
                     'status' => NotificationDeliveryLog::STATUS_FAILED,
-                    'error_message' => 'WhatsApp service returned error: ' . $response->body()
+                    'error_message' => 'WhatsApp service returned error: ' . ($result['error'] ?? 'Unknown error'),
+                    'metadata' => [
+                        'error_code' => $result['error_code'] ?? null
+                    ]
                 ]);
                 
                 return false;
@@ -279,6 +335,7 @@ class NotificationDeliveryService
 
     /**
      * Get recipient details based on notification.
+     * Uses PhoneUtility for consistent phone number formatting.
      */
     protected function getRecipientDetails(ExeatNotification $notification): ?array
     {
@@ -288,7 +345,7 @@ class NotificationDeliveryService
                 return $student ? [
                     'name' => $student->full_name,
                     'email' => $student->username,
-                    'phone' => $student->phone
+                    'phone' => $student->phone ? PhoneUtility::formatToInternational($student->phone) : null
                 ] : null;
                 
             case ExeatNotification::RECIPIENT_STAFF:
@@ -296,7 +353,7 @@ class NotificationDeliveryService
                 return $staff ? [
                     'name' => $staff->full_name,
                     'email' => $staff->email,
-                    'phone' => $staff->phone
+                    'phone' => $staff->phone ? PhoneUtility::formatToInternational($staff->phone) : null
                 ] : null;
                 
             default:
@@ -355,24 +412,46 @@ class NotificationDeliveryService
 
     /**
      * Schedule notification for later delivery.
+     * Modified to deliver directly instead of using queue.
      */
     protected function scheduleForLater(ExeatNotification $notification, string $method): void
     {
-        // No scheduling needed - send immediately
-        SendNotificationJob::dispatch($notification, $method)
-            ->onQueue('notifications');
+        // No scheduling needed - deliver immediately
+        $this->deliverNotification($notification, $method);
     }
 
     /**
      * Format SMS message.
+     * For staff comments, preserves the template format with student and staff names.
      */
     protected function formatSMSMessage(ExeatNotification $notification): string
     {
-        $message = $notification->title . "\n\n" . $notification->message;
+        // For staff comments, just use the message which already has the template
+        if ($notification->type === ExeatNotification::TYPE_STAFF_COMMENT) {
+            $message = $notification->message;
+        } else {
+            // For other notification types, include the title
+            $message = $notification->title . "\n\n" . $notification->message;
+        }
         
         // Truncate if too long for SMS
         if (strlen($message) > 160) {
-            $message = substr($message, 0, 157) . '...';
+            // Try to preserve the signature part if it's a staff comment
+            if ($notification->type === ExeatNotification::TYPE_STAFF_COMMENT && 
+                strpos($message, "signed:") !== false) {
+                
+                $signedPart = substr($message, strpos($message, "signed:"));
+                $mainPart = substr($message, 0, 157 - strlen($signedPart));
+                $message = $mainPart . "..." . $signedPart;
+                
+                // If still too long, use standard truncation
+                if (strlen($message) > 160) {
+                    $message = substr($message, 0, 157) . '...';
+                }
+            } else {
+                // Standard truncation for non-staff comments
+                $message = substr($message, 0, 157) . '...';
+            }
         }
         
         return $message;

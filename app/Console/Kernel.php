@@ -16,6 +16,11 @@ class Kernel extends ConsoleKernel
             Log::error('Birthday email sending failed: ' . $e->getMessage());
         }
     })->timezone('Africa/Lagos')->dailyAt('07:00');
+    
+    // Check for overdue exeats and calculate debt fees every hour
+    $schedule->command('exeat:check-overdue')
+        ->timezone('Africa/Lagos')
+        ->hourly();
 }
 
 
@@ -24,5 +29,10 @@ class Kernel extends ConsoleKernel
         $this->load(__DIR__.'/Commands');
 
         require base_path('routes/console.php');
+        
+        // Register the CheckOverdueExeats command
+        $this->commands([
+            \App\Console\Commands\CheckOverdueExeats::class,
+        ]);
     }
 }

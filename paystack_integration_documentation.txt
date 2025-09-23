@@ -1,0 +1,285 @@
+# Student Exeat Debt System Documentation
+
+## Overview
+This document provides a comprehensive guide to the student exeat debt system, including the debt creation process, payment flow using Paystack, exeat management, and API usage instructions.
+
+## Complete System Flow
+
+### 1. Debt Creation Process
+- The system runs a scheduled command (`exeat:check-overdue`) to identify overdue exeat requests
+- For each overdue exeat, the system calculates debt based on the number of days overdue
+- A new debt record is created in the `student_exeat_debts` table or existing records are updated
+- Students are notified about their debt
+
+### 2. Fee Structure
+- 10,000 Naira per day (24 hours) of overdue exeat
+- Partial days are counted as full days (e.g., 25 hours overdue = 2 days = 20,000 Naira)
+
+### 3. Payment Process
+- Student views their debts through the student portal
+- Student initiates payment via Paystack
+- System generates a payment reference and authorization URL
+- Student is redirected to Paystack payment page
+- After payment, student is redirected back to the application
+- System verifies the payment with Paystack
+- Upon successful verification, debt is automatically marked as cleared
+- Student receives a notification about debt clearance
+
+### 4. Exeat Management
+- Admins and deans can view all exeat requests in the system
+- Admins and deans can edit exeat details including:
+  - Purpose of exeat
+  - Departure date and time
+  - Expected return date and time
+  - Actual return date and time
+  - Status (pending, approved, rejected, completed, overdue)
+- When an exeat is edited, the system recalculates any associated debt
+- All edits are logged in the audit trail
+
+### 5. Debt Management
+- Admins and deans can view all student debts in the system
+- They can filter debts by payment status (unpaid, cleared)
+- They can filter debts by student
+- They can view detailed payment information including:
+  - Payment date
+  - Payment reference
+  - Payment method
+  - Transaction details from Paystack
+- They can view the audit trail for each debt
+
+### 6. Audit Trail
+- All actions related to debt creation, payment, clearance, and exeat edits are logged in the `audit_logs` table
+- Each log entry includes details about the action, the user who performed it, and relevant data
+
+## Database Structure
+
+### student_exeat_debts Table
+- `id`: Primary key
+- `student_id`: Foreign key to students table
+- `exeat_request_id`: Foreign key to exeat_requests table
+- `amount`: Debt amount in Naira
+- `overdue_hours`: Number of hours the exeat is overdue
+- `payment_status`: Status of payment (unpaid, cleared)
+- `payment_date`: Date when payment was made
+- `payment_reference`: Reference for tracking payments
+- `payment_proof`: Proof of payment (deprecated, only used for manual payments)
+- `cleared_at`: Timestamp when debt was cleared
+- `created_at`: Timestamp when record was created
+- `updated_at`: Timestamp when record was last updated
+
+## API Endpoints
+
+### 1. List Student Debts
+**Endpoint:** `GET /api/student/debts`
+
+**Description:** Retrieves all debts for the authenticated student
+
+**Authentication:** Requires student authentication token
+
+**Response:**
+```json
+{
+  "status": "success",
+  "data": [
+    {
+      "id": 1,
+      "student_id": 123,
+      "exeat_request_id": 456,
+      "amount": 10000,
+      "overdue_hours": 26,
+      "payment_status": "unpaid",
+      "created_at": "2023-10-14T10:00:00.000000Z",
+      "updated_at": "2023-10-14T10:00:00.000000Z"
+    }
+  ]
+}
+```
+
+### 2. View Specific Debt
+**Endpoint:** `GET /api/student/debts/{id}`
+
+**Description:** Retrieves details of a specific debt
+
+**Authentication:** Requires student authentication token
+
+**Response:**
+```json
+{
+  "status": "success",
+  "data": {
+    "id": 1,
+    "student_id": 123,
+    "exeat_request_id": 456,
+    "amount": 10000,
+    "overdue_hours": 26,
+    "payment_status": "unpaid",
+    "created_at": "2023-10-14T10:00:00.000000Z",
+    "updated_at": "2023-10-14T10:00:00.000000Z",
+    "exeat_request": {
+      "id": 456,
+      "purpose": "Family emergency",
+      "departure_date": "2023-10-10",
+      "return_date": "2023-10-12"
+    }
+  }
+}
+```
+
+### 3. Initialize Payment
+**Endpoint:** `PUT /api/student/debts/{id}/payment`
+
+**Description:** Initializes a payment transaction with Paystack
+
+**Authentication:** Requires student authentication token
+
+**Request Body:**
+```json
+{
+  "payment_method": "paystack"
+}
+```
+
+**Response:**
+```json
+{
+  "status": "success",
+  "message": "Payment initialized successfully",
+  "data": {
+    "authorization_url": "https://checkout.paystack.com/xyz123",
+    "access_code": "access_code_here",
+    "reference": "unique_reference_here"
+  }
+}
+```
+
+### 4. Verify Payment
+**Endpoint:** `GET /api/student/debts/{id}/verify-payment`
+
+**Description:** Verifies payment status with Paystack and updates debt record
+
+**Authentication:** Requires student authentication token
+
+**Response (Success):**
+```json
+{
+  "status": "success",
+  "message": "Payment verified and debt cleared successfully.",
+  "data": {
+    "id": 1,
+    "student_id": 123,
+    "exeat_request_id": 456,
+    "amount": 10000,
+    "payment_status": "cleared",
+    "payment_date": "2023-10-15T14:30:00.000000Z",
+    "payment_reference": "reference_here",
+    "cleared_at": "2023-10-15T14:30:00.000000Z"
+  }
+}
+```
+
+## Step-by-Step API Testing Guide
+
+### Prerequisites
+1. API testing tool (Postman, Insomnia, or similar)
+2. Valid student account credentials
+3. Paystack test account (for testing payments)
+
+### Testing Steps
+
+#### 1. Authentication
+1. Send a POST request to `/api/login` with student credentials
+2. Save the returned token for subsequent requests
+3. Set the token in the Authorization header: `Bearer {token}`
+
+#### 2. List Student Debts
+1. Send a GET request to `/api/student/debts`
+2. Verify that the response includes a list of debts
+3. Note the ID of an unpaid debt for payment testing
+
+#### 3. Initialize Payment
+1. Send a PUT request to `/api/student/debts/{id}/payment`
+2. Include the request body: `{"payment_method": "paystack"}`
+3. Verify that the response includes an authorization URL
+4. Note the payment reference for verification
+
+#### 4. Complete Payment (Manual Step)
+1. Open the authorization URL in a browser
+2. Use one of the test cards to complete the payment:
+   - Card Number: 4084 0840 8408 4081 (successful payment)
+   - CVV: 408
+   - Expiry Date: 01/25
+   - PIN: 0000
+   - OTP: 123456
+
+#### 5. Verify Payment
+1. Send a GET request to `/api/student/debts/{id}/verify-payment`
+2. Verify that the response indicates successful payment
+3. Check that the debt status is updated to "cleared"
+
+## Configuration
+The following environment variables must be set for Paystack integration:
+
+```
+PAYSTACK_SECRET_KEY=your_secret_key_here
+PAYSTACK_PUBLIC_KEY=your_public_key_here
+PAYSTACK_PAYMENT_URL=https://api.paystack.co
+```
+
+## Implementation Details
+
+### PaystackService
+The `PaystackService` class handles all interactions with the Paystack API:
+
+- `initializeTransaction`: Prepares and sends payment initialization requests
+- `verifyTransaction`: Checks the status of a transaction using its reference
+
+### StudentExeatDebtController
+The controller manages student debt operations:
+
+- `index`: Lists all debts for the authenticated student
+- `show`: Shows details of a specific debt
+- `updatePaymentProof`: Initializes Paystack payment
+- `verifyPayment`: Verifies payment status and updates debt record
+
+### AdminExeatController
+The controller manages exeat operations for administrators:
+
+- `index`: Lists all exeat requests
+- `show`: Shows details of a specific exeat request
+- `update`: Updates an exeat request's details and recalculates debt if needed
+
+### DeanExeatController
+The controller manages exeat operations for deans:
+
+- `index`: Lists all exeat requests
+- `show`: Shows details of a specific exeat request
+- `update`: Updates an exeat request's details and recalculates debt if needed
+
+### AdminStudentDebtController
+The controller manages student debt operations for administrators:
+
+- `index`: Lists all student debts with filtering options
+- `show`: Shows details of a specific debt including payment information
+
+### DeanStudentDebtController
+The controller manages student debt operations for deans:
+
+- `index`: Lists all student debts with filtering options
+- `show`: Shows details of a specific debt including payment information
+
+### CheckOverdueExeats Command
+The command checks for overdue exeats and calculates debt:
+
+- Runs on a schedule (typically daily)
+- Identifies exeats that are past their return date
+- Calculates debt based on days overdue
+- Creates or updates debt records
+- Sends notifications to students
+
+## Important Notes
+
+1. All successful payments are automatically marked as cleared without requiring admin or dean approval
+2. The system uses Paystack's reference for tracking payments
+3. All payment activities are logged in the audit trail
+4. Students receive notifications when their debts are cleared
+5. The fee structure is based solely on daily charges (10,000 Naira per day)
