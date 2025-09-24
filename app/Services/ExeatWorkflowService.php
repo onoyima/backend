@@ -202,7 +202,7 @@ class ExeatWorkflowService
     — VERITAS University Exeat Management Team
     EOD;
 
-        $notificationSMS = "Dear Parent of $studentName, reason: \"$reason\".\nApprove: $linkApprove\nReject: $linkReject\nValid until: $expiryText";
+        $notificationSMS = "EXEAT: $studentName needs approval. Reason: $reason\nApprove: $linkApprove\nReject: $linkReject\nExpires: $expiryText";
 
         $emailSent = false;
         $additionalNotificationSent = false;

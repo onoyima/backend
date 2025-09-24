@@ -222,16 +222,16 @@ class NotificationDeliveryService
                 // If we have a messaging service configured, we can use it to send with a branded name
                 // Otherwise, we'll use the default Twilio phone number
                 
-                // Add the sender name to the beginning of the message as a workaround
+                // Send SMS without prefix to save characters
                 $message = $client->messages->create(
                     $formattedPhone,
                     [
                         'from' => $from,
-                        'body' => "VERITAS EXEAT: " . $this->formatSMSMessage($notification)
+                        'body' => $this->formatSMSMessage($notification)
                     ]
                 );
             } else {
-                // For other notification types, use standard format
+                // For other notification types, use standard format without prefix
                 $message = $client->messages->create(
                     $formattedPhone,
                     [
@@ -421,39 +421,24 @@ class NotificationDeliveryService
     }
 
     /**
-     * Format SMS message.
-     * For staff comments, preserves the template format with student and staff names.
+     * Format SMS message with character optimization for cost efficiency.
+     * For staff comments, uses raw message only.
      */
     protected function formatSMSMessage(ExeatNotification $notification): string
     {
-        // For staff comments, just use the message which already has the template
+        // For staff comments, use raw message only (no title, no formatting)
         if ($notification->type === ExeatNotification::TYPE_STAFF_COMMENT) {
             $message = $notification->message;
         } else {
-            // For other notification types, include the title
-            $message = $notification->title . "\n\n" . $notification->message;
+            // For other types, use message only (no title to save characters)
+            $message = $notification->message;
         }
         
-        // Truncate if too long for SMS
+        // Optimize for SMS character limits (160 chars)
         if (strlen($message) > 160) {
-            // Try to preserve the signature part if it's a staff comment
-            if ($notification->type === ExeatNotification::TYPE_STAFF_COMMENT && 
-                strpos($message, "signed:") !== false) {
-                
-                $signedPart = substr($message, strpos($message, "signed:"));
-                $mainPart = substr($message, 0, 157 - strlen($signedPart));
-                $message = $mainPart . "..." . $signedPart;
-                
-                // If still too long, use standard truncation
-                if (strlen($message) > 160) {
-                    $message = substr($message, 0, 157) . '...';
-                }
-            } else {
-                // Standard truncation for non-staff comments
-                $message = substr($message, 0, 157) . '...';
-            }
+            $message = substr($message, 0, 157) . '...';
         }
-        
+
         return $message;
     }
 

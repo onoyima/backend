@@ -36,20 +36,12 @@ class ExeatNotificationService
                 ExeatNotification::PRIORITY_HIGH
             );
 
-            // Send email to student
+            // Send email to student only (SMS removed for cost optimization)
             $student = Student::find($exeatRequest->student_id);
             if ($student && $student->email) {
                 $this->deliveryService->queueNotificationDelivery(
                     $this->createExeatModifiedEmailNotification($exeatRequest, $student, $message),
                     'email'
-                );
-            }
-
-            // Send SMS if student has phone number
-            if ($student && $student->phone) {
-                $this->deliveryService->queueNotificationDelivery(
-                    $this->createExeatModifiedSmsNotification($exeatRequest, $student, $message),
-                    'sms'
                 );
             }
         } catch (\Exception $e) {
@@ -114,7 +106,7 @@ class ExeatNotificationService
         try {
             $message = "Your exeat debt has been recalculated due to a change in your return date. Additional amount: ₦{$additionalAmount}. Total debt: ₦{$totalAmount}.";
             
-            // Notify the student in-app
+            // Notify the student in-app only (email and SMS removed for cost optimization)
             $this->createNotification(
                 $exeatRequest,
                 [['type' => 'App\\Models\\Student', 'id' => $student->id]],
@@ -123,22 +115,6 @@ class ExeatNotificationService
                 $message,
                 ExeatNotification::PRIORITY_HIGH
             );
-
-            // Send email to student
-            if ($student->email) {
-                $this->deliveryService->queueNotificationDelivery(
-                    $this->createDebtRecalculationEmailNotification($exeatRequest, $student, $additionalAmount, $totalAmount),
-                    'email'
-                );
-            }
-
-            // Send SMS if student has phone number
-            if ($student->phone) {
-                $this->deliveryService->queueNotificationDelivery(
-                    $this->createDebtRecalculationSmsNotification($exeatRequest, $student, $additionalAmount, $totalAmount),
-                    'sms'
-                );
-            }
         } catch (\Exception $e) {
             Log::error('Failed to send debt recalculation notification', [
                 'exeat_id' => $exeatRequest->id,
@@ -295,19 +271,11 @@ class ExeatNotificationService
                 ExeatNotification::PRIORITY_MEDIUM
             );
 
-            // Send email to student
+            // Send email to student only (SMS removed for cost optimization)
             if ($student->email) {
                 $this->deliveryService->queueNotificationDelivery(
                     $this->createDebtClearanceEmailNotification($exeatRequest, $student),
                     'email'
-                );
-            }
-
-            // Send SMS if student has phone number
-            if ($student->phone) {
-                $this->deliveryService->queueNotificationDelivery(
-                    $this->createDebtClearanceSmsNotification($exeatRequest, $student),
-                    'sms'
                 );
             }
         } catch (\Exception $e) {

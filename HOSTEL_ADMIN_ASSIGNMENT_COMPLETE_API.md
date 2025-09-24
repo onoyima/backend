@@ -658,9 +658,9 @@ The Student Exeat Debt Management system handles overdue payments when students 
 
 ## Base URLs
 
-- **Student Routes**: `/api/student/debts`
-- **Admin Routes**: `/api/admin/student-debts`
-- **Dean Routes**: `/api/dean/student-debts`
+-   **Student Routes**: `/api/student/debts`
+-   **Admin Routes**: `/api/admin/student-debts`
+-   **Dean Routes**: `/api/dean/student-debts`
 
 ---
 
@@ -673,12 +673,14 @@ The Student Exeat Debt Management system handles overdue payments when students 
 **Description**: Returns all debts belonging to the authenticated student.
 
 **Example Request**:
+
 ```http
 GET /api/student/debts
 Authorization: Bearer student_token_here
 ```
 
 **Success Response (200)**:
+
 ```json
 {
     "status": "success",
@@ -738,12 +740,14 @@ Authorization: Bearer student_token_here
 **Description**: Returns detailed information about a specific debt.
 
 **Example Request**:
+
 ```http
 GET /api/student/debts/1
 Authorization: Bearer student_token_here
 ```
 
 **Success Response (200)**:
+
 ```json
 {
     "status": "success",
@@ -783,6 +787,7 @@ Authorization: Bearer student_token_here
 ```
 
 **Error Response (404)**:
+
 ```json
 {
     "message": "No query results for model [App\\Models\\StudentExeatDebt] 1"
@@ -790,6 +795,7 @@ Authorization: Bearer student_token_here
 ```
 
 **Error Response (403) - Not Student's Debt**:
+
 ```json
 {
     "status": "error",
@@ -806,6 +812,7 @@ Authorization: Bearer student_token_here
 **Description**: Initializes a Paystack payment transaction for the debt.
 
 **Request Payload**:
+
 ```json
 {
     "payment_method": "paystack"
@@ -813,9 +820,11 @@ Authorization: Bearer student_token_here
 ```
 
 **Validation Rules**:
-- `payment_method`: required|string|in:paystack
+
+-   `payment_method`: required|string|in:paystack
 
 **Example Request**:
+
 ```http
 POST /api/student/debts/1/payment-proof
 Authorization: Bearer student_token_here
@@ -827,6 +836,7 @@ Content-Type: application/json
 ```
 
 **Success Response (200)**:
+
 ```json
 {
     "status": "success",
@@ -840,6 +850,7 @@ Content-Type: application/json
 ```
 
 **Error Response (422) - Already Paid**:
+
 ```json
 {
     "status": "error",
@@ -848,6 +859,7 @@ Content-Type: application/json
 ```
 
 **Error Response (403) - Not Student's Debt**:
+
 ```json
 {
     "status": "error",
@@ -856,6 +868,7 @@ Content-Type: application/json
 ```
 
 **Error Response (404) - Student Not Found**:
+
 ```json
 {
     "status": "error",
@@ -872,15 +885,18 @@ Content-Type: application/json
 **Description**: Verifies a Paystack payment and automatically clears the debt if successful.
 
 **Query Parameters**:
-- `reference` (optional): Payment reference to verify (uses stored reference if not provided)
+
+-   `reference` (optional): Payment reference to verify (uses stored reference if not provided)
 
 **Example Request**:
+
 ```http
 GET /api/student/debts/1/verify-payment?reference=EXEAT-DEBT-1-1695123456
 Authorization: Bearer student_token_here
 ```
 
 **Success Response (200)**:
+
 ```json
 {
     "status": "success",
@@ -903,6 +919,7 @@ Authorization: Bearer student_token_here
 ```
 
 **Error Response (422) - Payment Failed**:
+
 ```json
 {
     "status": "error",
@@ -911,6 +928,7 @@ Authorization: Bearer student_token_here
 ```
 
 **Error Response (422) - No Reference**:
+
 ```json
 {
     "status": "error",
@@ -919,6 +937,7 @@ Authorization: Bearer student_token_here
 ```
 
 **Error Response (403) - Not Student's Debt**:
+
 ```json
 {
     "status": "error",
@@ -927,6 +946,7 @@ Authorization: Bearer student_token_here
 ```
 
 **Error Response (500) - Processing Error**:
+
 ```json
 {
     "status": "error",
@@ -945,18 +965,21 @@ Authorization: Bearer student_token_here
 **Description**: Returns paginated list of all student debts with filtering options.
 
 **Query Parameters**:
-- `payment_status` (optional): Filter by status (unpaid|paid|cleared)
-- `student_id` (optional): Filter by specific student
-- `page` (optional): Page number (default: 1)
-- `per_page` (optional): Items per page (default: 15)
+
+-   `payment_status` (optional): Filter by status (unpaid|paid|cleared)
+-   `student_id` (optional): Filter by specific student
+-   `page` (optional): Page number (default: 1)
+-   `per_page` (optional): Items per page (default: 15)
 
 **Example Request**:
+
 ```http
 GET /api/admin/student-debts?payment_status=unpaid&page=1&per_page=10
 Authorization: Bearer admin_token_here
 ```
 
 **Success Response (200)**:
+
 ```json
 {
     "status": "success",
@@ -1018,12 +1041,14 @@ Authorization: Bearer admin_token_here
 **Description**: Returns detailed information about any student debt.
 
 **Example Request**:
+
 ```http
 GET /api/admin/student-debts/1
 Authorization: Bearer admin_token_here
 ```
 
 **Success Response (200)**:
+
 ```json
 {
     "status": "success",
@@ -1074,6 +1099,7 @@ Authorization: Bearer admin_token_here
 **Description**: Manually clears a student debt (for payments made outside the system).
 
 **Request Payload**:
+
 ```json
 {
     "notes": "Paid via bank transfer - Receipt #12345"
@@ -1081,9 +1107,11 @@ Authorization: Bearer admin_token_here
 ```
 
 **Validation Rules**:
-- `notes`: nullable|string|max:1000
+
+-   `notes`: nullable|string|max:1000
 
 **Example Request**:
+
 ```http
 POST /api/admin/student-debts/1/clear
 Authorization: Bearer admin_token_here
@@ -1095,6 +1123,7 @@ Content-Type: application/json
 ```
 
 **Success Response (200)**:
+
 ```json
 {
     "status": "success",
@@ -1136,6 +1165,7 @@ Content-Type: application/json
 ```
 
 **Error Response (403) - Unauthorized**:
+
 ```json
 {
     "status": "error",
@@ -1144,6 +1174,7 @@ Content-Type: application/json
 ```
 
 **Error Response (422) - Debt Not Paid**:
+
 ```json
 {
     "status": "error",
@@ -1152,6 +1183,7 @@ Content-Type: application/json
 ```
 
 **Error Response (404)**:
+
 ```json
 {
     "message": "No query results for model [App\\Models\\StudentExeatDebt] 1"
@@ -1169,6 +1201,7 @@ Content-Type: application/json
 **Description**: Creates a new exeat request but blocks creation if student has outstanding debts.
 
 **Request Payload**:
+
 ```json
 {
     "category_id": 1,
@@ -1181,6 +1214,7 @@ Content-Type: application/json
 ```
 
 **Success Response (201) - No Debts**:
+
 ```json
 {
     "message": "Exeat request created successfully.",
@@ -1199,17 +1233,18 @@ Content-Type: application/json
 ```
 
 **Error Response (403) - Outstanding Debts**:
+
 ```json
 {
     "status": "error",
     "message": "You have outstanding exeat debts that must be cleared before creating a new exeat request.",
     "details": {
-        "total_debt_amount": 30000.00,
+        "total_debt_amount": 30000.0,
         "number_of_debts": 2,
         "debts": [
             {
                 "debt_id": 1,
-                "amount": 20000.00,
+                "amount": 20000.0,
                 "overdue_hours": 25,
                 "payment_status": "unpaid",
                 "exeat_request_id": 456,
@@ -1218,7 +1253,7 @@ Content-Type: application/json
             },
             {
                 "debt_id": 2,
-                "amount": 10000.00,
+                "amount": 10000.0,
                 "overdue_hours": 5,
                 "payment_status": "paid",
                 "exeat_request_id": 789,
@@ -1297,6 +1332,7 @@ Example: EXEAT-DEBT-1-1695123456
 **Channels**: Email + In-app notification
 
 **Email Template**:
+
 ```
 Subject: Exeat Debt Notification - ₦20,000
 
@@ -1324,6 +1360,7 @@ Exeat Management System
 **Channels**: Email + SMS + In-app notification
 
 **Email Template**:
+
 ```
 Subject: Exeat Debt Cleared - ₦20,000
 
@@ -1347,6 +1384,7 @@ Exeat Management System
 ```
 
 **SMS Template**:
+
 ```
 EXEAT DEBT CLEARED: Your debt of ₦20,000 for exeat #456 has been cleared successfully. You can now create new exeat requests. Thank you!
 ```
@@ -1407,35 +1445,39 @@ POST /api/admin/student-debts/1/clear
 
 ### Common HTTP Status Codes
 
-- **200**: Success
-- **201**: Created successfully
-- **401**: Unauthorized (invalid/missing token)
-- **403**: Forbidden (debt blocking, insufficient permissions)
-- **404**: Resource not found
-- **422**: Validation error, payment failed
-- **500**: Internal server error
+-   **200**: Success
+-   **201**: Created successfully
+-   **401**: Unauthorized (invalid/missing token)
+-   **403**: Forbidden (debt blocking, insufficient permissions)
+-   **404**: Resource not found
+-   **422**: Validation error, payment failed
+-   **500**: Internal server error
 
 ### Debt-Specific Error Messages
 
 1. **Outstanding Debts Block Exeat Creation**:
-   - Status: 403
-   - Message: "You have outstanding exeat debts that must be cleared..."
+
+    - Status: 403
+    - Message: "You have outstanding exeat debts that must be cleared..."
 
 2. **Student Accessing Other's Debt**:
-   - Status: 403
-   - Message: "Unauthorized. You can only [action] your own debts."
+
+    - Status: 403
+    - Message: "Unauthorized. You can only [action] your own debts."
 
 3. **Payment Already Processed**:
-   - Status: 422
-   - Message: "Cannot update payment proof for a debt that is already paid or cleared"
+
+    - Status: 422
+    - Message: "Cannot update payment proof for a debt that is already paid or cleared"
 
 4. **Admin Clearing Unpaid Debt**:
-   - Status: 422
-   - Message: "Cannot clear a debt that is not marked as paid"
+
+    - Status: 422
+    - Message: "Cannot clear a debt that is not marked as paid"
 
 5. **Paystack Payment Failed**:
-   - Status: 422
-   - Message: "Payment verification failed"
+    - Status: 422
+    - Message: "Payment verification failed"
 
 ---
 
