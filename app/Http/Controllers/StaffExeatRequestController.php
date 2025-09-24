@@ -526,10 +526,32 @@ public function approve(StaffExeatApprovalRequest $request, $id)
 
             $parentConsent = $this->workflowService->sendParentConsent($exeatRequest, $validated['method'], $validated['message'] ?? null, $user->id);
 
+            // Check notification status and provide appropriate response
+            $responseMessage = 'Parent consent request processed.';
+            $responseCode = 200;
+            
+            if (isset($parentConsent->notification_status)) {
+                switch ($parentConsent->notification_status) {
+                    case 'success':
+                        $responseMessage = 'Parent consent request sent successfully.';
+                        break;
+                    case 'no_email':
+                        $responseMessage = 'Parent consent request created, but no parent email address is available for email notification.';
+                        $responseCode = 422;
+                        break;
+                    case 'failed':
+                        $responseMessage = 'Parent consent request created, but notification delivery failed.';
+                        $responseCode = 422;
+                        break;
+                }
+            }
+
             return response()->json([
-                'message' => 'Parent consent request sent.',
+                'message' => $responseMessage,
                 'parent_consent' => $parentConsent,
-            ]);
+                'notification_status' => $parentConsent->notification_status ?? 'unknown',
+                'status_message' => $parentConsent->status_message ?? 'No status message available'
+            ], $responseCode);
         }
 
     public function history(Request $request, $id)

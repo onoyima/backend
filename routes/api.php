@@ -131,7 +131,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Admin routes
 
- Route::middleware(['role:admin'])->prefix('admin')->group(function () {
+ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
     Route::get('/roles', [AdminRoleController::class, 'index']);
     Route::post('/roles', [AdminRoleController::class, 'store']);
     Route::put('/roles/{id}', [AdminRoleController::class, 'update']);

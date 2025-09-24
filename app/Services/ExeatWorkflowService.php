@@ -207,27 +207,42 @@ class ExeatWorkflowService
         $emailSent = false;
         $additionalNotificationSent = false;
 
-        // Always attempt to send emails first
-        try {
-            $this->sendParentConsentEmail($parentEmail, 'Parent', 'Exeat Consent Request', $notificationEmail, $exeatRequest, $linkApprove, $linkReject);
-            $emailSent = true;
-            Log::info('Parent consent email sent successfully', ['exeat_id' => $exeatRequest->id, 'email' => $parentEmail]);
-        } catch (\Exception $e) {
-            Log::error('Failed to send parent consent email', [
+        // Only send parent email if preferred mode is email AND parent email exists
+        if ($method === 'email' && !empty($parentEmail)) {
+            try {
+                $this->sendParentConsentEmail($parentEmail, 'Parent', 'Exeat Consent Request', $notificationEmail, $exeatRequest, $linkApprove, $linkReject);
+                $emailSent = true;
+                Log::info('Parent consent email sent successfully', ['exeat_id' => $exeatRequest->id, 'email' => $parentEmail]);
+            } catch (\Exception $e) {
+                Log::error('Failed to send parent consent email', [
+                    'exeat_id' => $exeatRequest->id,
+                    'email' => $parentEmail,
+                    'error' => $e->getMessage()
+                ]);
+            }
+        } elseif ($method === 'email' && empty($parentEmail)) {
+            Log::warning('Cannot send parent consent email - no parent email address provided', [
                 'exeat_id' => $exeatRequest->id,
-                'email' => $parentEmail,
-                'error' => $e->getMessage()
+                'student_id' => $exeatRequest->student_id,
+                'preferred_mode' => $method
             ]);
         }
 
-        try {
-            $this->sendParentConsentEmail(env('ADMIN_EMAIL'), 'Administrator', 'Exeat Consent Request', $notificationEmail, $exeatRequest, $linkApprove, $linkReject);
-            Log::info('Administrator consent email sent successfully', ['exeat_id' => $exeatRequest->id]);
-        } catch (\Exception $e) {
-            Log::error('Failed to send administrator consent email', [
-                'exeat_id' => $exeatRequest->id,
-                'error' => $e->getMessage()
-            ]);
+        // Send copy to admin if admin email is configured
+        $adminEmail = env('ADMIN_EMAIL');
+        if (!empty($adminEmail)) {
+            try {
+                $this->sendParentConsentEmail($adminEmail, 'Administrator', 'Exeat Consent Request', $notificationEmail, $exeatRequest, $linkApprove, $linkReject);
+                Log::info('Administrator consent email sent successfully', ['exeat_id' => $exeatRequest->id]);
+            } catch (\Exception $e) {
+                Log::error('Failed to send administrator consent email', [
+                    'exeat_id' => $exeatRequest->id,
+                    'admin_email' => $adminEmail,
+                    'error' => $e->getMessage()
+                ]);
+            }
+        } else {
+            Log::info('Admin email not configured - skipping admin notification', ['exeat_id' => $exeatRequest->id]);
         }
 
         // Send additional notifications based on preferred_mode_of_contact
@@ -312,12 +327,39 @@ class ExeatWorkflowService
             ]);
         }
 
+        // Determine overall notification status
+        $notificationStatus = 'failed';
+        $statusMessage = 'No notifications could be sent';
+        
+        if ($method === 'email') {
+            if (empty($parentEmail)) {
+                $notificationStatus = 'no_email';
+                $statusMessage = 'No parent email address provided - cannot send email notification';
+            } elseif ($emailSent) {
+                $notificationStatus = 'success';
+                $statusMessage = 'Parent consent email sent successfully';
+            } else {
+                $notificationStatus = 'failed';
+                $statusMessage = 'Failed to send parent consent email';
+            }
+        } else {
+            if ($additionalNotificationSent) {
+                $notificationStatus = 'success';
+                $statusMessage = "Parent consent sent via {$method}";
+            } else {
+                $notificationStatus = 'failed';
+                $statusMessage = "Failed to send parent consent via {$method}";
+            }
+        }
+
         Log::info('Parent consent requested', [
             'exeat_id' => $exeatRequest->id,
             'method' => $method,
             'parent_email' => $parentEmail,
             'parent_phone' => $parentPhone,
-            'expires_at' => $expiryText
+            'expires_at' => $expiryText,
+            'notification_status' => $notificationStatus,
+            'status_message' => $statusMessage
         ]);
 
         $exeatRequest->status = 'parent_consent';
@@ -329,10 +371,14 @@ class ExeatWorkflowService
                 $staffId,
                 $exeatRequest->student_id,
                 'parent_consent_request',
-                "Changed from {$oldStatus} to parent_consent",
+                "Changed from {$oldStatus} to parent_consent - {$statusMessage}",
                 "Method: {$method}"
             );
         }
+
+        // Add notification status to parent consent record
+        $parentConsent->notification_status = $notificationStatus;
+        $parentConsent->status_message = $statusMessage;
 
         return $parentConsent;
     }

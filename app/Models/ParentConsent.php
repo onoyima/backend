@@ -19,7 +19,9 @@ class ParentConsent extends Model
         'consent_timestamp',
         'acted_by_staff_id',
         'action_type',
-        'deputy_dean_reason'
+        'deputy_dean_reason',
+        'notification_status',
+        'status_message'
     ];
 
     public function exeatRequest()

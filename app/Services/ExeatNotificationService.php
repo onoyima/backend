@@ -212,7 +212,7 @@ class ExeatNotificationService
             // Notify the student in-app
             $this->createNotification(
                 $exeatRequest,
-                [['type' => 'App\\Models\\Student', 'id' => $student->id]],
+                [['type' => 'student', 'id' => $student->id]],
                 'student_debt_created',
                 'Exeat Debt Notification',
                 $message,
@@ -537,7 +537,7 @@ class ExeatNotificationService
         // Only send to the student recipient
         $recipients = [
             [
-                'type' => ExeatNotification::RECIPIENT_STUDENT,
+                'type' => 'student', // Use simple string instead of class constant
                 'id' => $exeatRequest->student_id
             ]
         ];
