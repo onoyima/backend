@@ -219,19 +219,11 @@ class ExeatNotificationService
                 ExeatNotification::PRIORITY_HIGH
             );
 
-            // Send email to student
+            // Send email to student (SMS removed for overdue debts)
             if ($student->email) {
                 $this->deliveryService->queueNotificationDelivery(
                     $this->createDebtEmailNotification($exeatRequest, $student, $amount),
                     'email'
-                );
-            }
-
-            // Send SMS if student has phone number
-            if ($student->phone) {
-                $this->deliveryService->queueNotificationDelivery(
-                    $this->createDebtSmsNotification($exeatRequest, $student, $amount),
-                    'sms'
                 );
             }
         } catch (\Exception $e) {

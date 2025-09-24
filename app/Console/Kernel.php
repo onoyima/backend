@@ -17,7 +17,7 @@ class Kernel extends ConsoleKernel
         }
     })->timezone('Africa/Lagos')->dailyAt('07:00');
     
-    // Check for overdue exeats and calculate debt fees every hour
+    // Monitor overdue exeats every hour (debts created on return)
     $schedule->command('exeat:check-overdue')
         ->timezone('Africa/Lagos')
         ->hourly();

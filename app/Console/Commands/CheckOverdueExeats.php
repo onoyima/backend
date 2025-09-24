@@ -24,7 +24,7 @@ class CheckOverdueExeats extends Command
      *
      * @var string
      */
-    protected $description = 'Check for overdue exeat requests and calculate debt fees';
+    protected $description = 'Check for overdue exeat requests (monitoring only - debts created on return)';
     
     /**
      * The exeat notification service.
@@ -52,13 +52,11 @@ class CheckOverdueExeats extends Command
     {
         $this->info('Checking for overdue exeat requests...');
         
-        // Get all approved exeat requests that have passed their return date
-        // and don't have a security sign-in record
-        $overdueExeats = ExeatRequest::where('status', 'approved')
-            ->where('return_date', '<', Carbon::now()->toDateString())
-            ->whereDoesntHave('securitySignouts', function ($query) {
-                $query->where('type', 'sign_in');
-            })
+        // Get all exeat requests that have passed their return date
+        // and student hasn't completed the return process (not completed, rejected, or cancelled)
+        $overdueExeats = ExeatRequest::where('return_date', '<', Carbon::now()->toDateString())
+            ->whereNotIn('status', ['completed', 'rejected', 'cancelled'])
+            ->where('is_expired', false)
             ->get();
             
         $this->info("Found {$overdueExeats->count()} overdue exeat requests.");
@@ -69,59 +67,22 @@ class CheckOverdueExeats extends Command
             $returnDate = Carbon::parse($exeat->return_date);
             $now = Carbon::now();
             
-            // Calculate hours overdue
+            // Calculate hours overdue for monitoring
             $hoursOverdue = $returnDate->diffInHours($now);
+            $daysOverdue = ceil($hoursOverdue / 24);
+            $potentialDebtAmount = $daysOverdue * $baseDebtAmount;
             
-            // Calculate debt amount - only using daily charges
-            // If less than 24 hours, count as 1 day
-            $daysOverdue = ceil($hoursOverdue / 24); // Using ceil to count partial days as full days
-            $totalDebtAmount = $daysOverdue * $baseDebtAmount;
+            // Only log overdue students for monitoring (no debt creation)
+            $this->info("Overdue student monitoring - Exeat #{$exeat->id}, Student #{$exeat->student_id}: {$hoursOverdue} hours overdue (Potential debt: ₦{$potentialDebtAmount})");
             
-            // Check if a debt record already exists for this exeat
-            $existingDebt = StudentExeatDebt::where('exeat_request_id', $exeat->id)
-                ->where('payment_status', '!=', 'cleared')
-                ->first();
-            
-            $isNewDebt = false;
-                
-            if ($existingDebt) {
-                // Update existing debt record
-                $existingDebt->amount = $totalDebtAmount;
-                $existingDebt->overdue_hours = $hoursOverdue;
-                $existingDebt->save();
-                
-                $this->info("Updated debt for exeat #{$exeat->id}, student #{$exeat->student_id}: {$totalDebtAmount} Naira ({$hoursOverdue} hours overdue)");
-            } else {
-                // Create new debt record
-                StudentExeatDebt::create([
-                    'student_id' => $exeat->student_id,
-                    'exeat_request_id' => $exeat->id,
-                    'amount' => $totalDebtAmount,
-                    'overdue_hours' => $hoursOverdue,
-                    'payment_status' => 'unpaid',
-                ]);
-                
-                $isNewDebt = true;
-                $this->info("Created new debt for exeat #{$exeat->id}, student #{$exeat->student_id}: {$totalDebtAmount} Naira ({$hoursOverdue} hours overdue)");
-            }
-            
-            // Send notification to student if this is a new debt
-            if ($isNewDebt) {
-                try {
-                    $student = Student::find($exeat->student_id);
-                    if ($student) {
-                        $this->notificationService->sendDebtNotification($student, $exeat, $totalDebtAmount);
-                        $this->info("Sent debt notification to student #{$exeat->student_id}");
-                    }
-                } catch (\Exception $e) {
-                    Log::error('Failed to send debt notification', [
-                        'student_id' => $exeat->student_id,
-                        'exeat_id' => $exeat->id,
-                        'error' => $e->getMessage()
-                    ]);
-                    $this->error("Failed to send debt notification: {$e->getMessage()}");
-                }
-            }
+            // Log for admin monitoring
+            Log::info('Overdue student detected', [
+                'exeat_id' => $exeat->id,
+                'student_id' => $exeat->student_id,
+                'hours_overdue' => $hoursOverdue,
+                'potential_debt' => $potentialDebtAmount,
+                'status' => $exeat->status
+            ]);
         }
         
         $this->info('Overdue exeat check completed.');

@@ -782,6 +782,62 @@ EOT;
 }
 
     /**
+     * Check if student is returning late and create overdue debt
+     */
+    private function checkAndCreateOverdueDebt(ExeatRequest $exeatRequest)
+    {
+        $returnDate = \Carbon\Carbon::parse($exeatRequest->return_date);
+        $actualReturnTime = now();
+        
+        // Check if student is returning late
+        if ($actualReturnTime->gt($returnDate)) {
+            // Calculate hours overdue
+            $hoursOverdue = $returnDate->diffInHours($actualReturnTime);
+            
+            // Calculate debt amount (₦10,000 per day, partial days count as full days)
+            $daysOverdue = ceil($hoursOverdue / 24);
+            $debtAmount = $daysOverdue * 10000;
+            
+            // Check if debt already exists for this exeat
+            $existingDebt = \App\Models\StudentExeatDebt::where('exeat_request_id', $exeatRequest->id)
+                ->where('payment_status', '!=', 'cleared')
+                ->first();
+            
+            if (!$existingDebt) {
+                // Create new debt record
+                $debt = \App\Models\StudentExeatDebt::create([
+                    'student_id' => $exeatRequest->student_id,
+                    'exeat_request_id' => $exeatRequest->id,
+                    'amount' => $debtAmount,
+                    'overdue_hours' => $hoursOverdue,
+                    'payment_status' => 'unpaid',
+                ]);
+                
+                // Send debt notification to student (email only, no SMS)
+                try {
+                    $student = \App\Models\Student::find($exeatRequest->student_id);
+                    if ($student) {
+                        $this->notificationService->sendDebtNotification($student, $exeatRequest, $debtAmount);
+                    }
+                } catch (\Exception $e) {
+                    Log::error('Failed to send debt notification', [
+                        'student_id' => $exeatRequest->student_id,
+                        'exeat_id' => $exeatRequest->id,
+                        'error' => $e->getMessage()
+                    ]);
+                }
+                
+                Log::info('Created overdue debt for late return', [
+                    'exeat_id' => $exeatRequest->id,
+                    'student_id' => $exeatRequest->student_id,
+                    'hours_overdue' => $hoursOverdue,
+                    'debt_amount' => $debtAmount
+                ]);
+            }
+        }
+    }
+
+    /**
      * Handle special stage actions for security and hostel stages
      */
     private function handleSpecialStageActions(ExeatRequest $exeatRequest, ExeatApproval $approval, $oldStatus)
@@ -813,6 +869,9 @@ EOT;
             if ($signout) {
                 $signout->signin_time = now();
                 $signout->save();
+
+                // Check if student is returning late and create debt
+                $this->checkAndCreateOverdueDebt($exeatRequest);
 
                 // Send parent notification for sign-in
                 $this->sendParentNotification($exeatRequest, 'IN');
