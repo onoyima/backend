@@ -868,6 +868,7 @@ public function approve(StaffExeatApprovalRequest $request, $id)
     /**
      * Send a comment to a student regarding their exeat request
      * This doesn't affect the exeat workflow status
+     * Only one comment notification is allowed per exeat status
      */
     public function sendComment(Request $request, $id)
     {
@@ -887,11 +888,53 @@ public function approve(StaffExeatApprovalRequest $request, $id)
         ]);
         
         try {
+            // Check if a comment notification has already been sent for the current status
+            $currentStatus = $exeatRequest->status;
+            $existingComment = \App\Models\ExeatNotification::where('exeat_request_id', $exeatRequest->id)
+                ->where('notification_type', \App\Models\ExeatNotification::TYPE_STAFF_COMMENT)
+                ->where('data->status', $currentStatus)
+                ->first();
+                
+            if ($existingComment) {
+                // Get the staff who sent the previous comment from audit log
+                $previousCommentLog = AuditLog::where('target_type', 'exeat_request')
+                    ->where('target_id', $exeatRequest->id)
+                    ->where('action', 'staff_comment')
+                    ->where('details', 'like', '%Staff sent comment to student:%')
+                    ->with('staff:id,fname,lname')
+                    ->orderBy('timestamp', 'desc')
+                    ->first();
+                
+                $previousStaffName = 'Unknown Staff';
+                $previousComment = 'Comment details not available';
+                $sentAt = $existingComment->created_at->format('M j, Y g:i A');
+                
+                if ($previousCommentLog && $previousCommentLog->staff) {
+                    $previousStaffName = "{$previousCommentLog->staff->fname} {$previousCommentLog->staff->lname}";
+                    // Extract comment from audit log details
+                    if (preg_match('/Staff sent comment to student: (.+)$/', $previousCommentLog->details, $matches)) {
+                        $previousComment = $matches[1];
+                    }
+                }
+                
+                return response()->json([
+                    'message' => 'A comment has already been sent for this exeat status. Please wait until the status changes to send another comment.',
+                    'status' => $currentStatus,
+                    'previous_comment' => [
+                        'message' => $previousComment,
+                        'sent_by' => $previousStaffName,
+                        'sent_at' => $sentAt,
+                        'notification_id' => $existingComment->id
+                    ]
+                ], 422);
+            }
+            
             // Send notification to student
             $notifications = $this->notificationService->sendStaffCommentNotification(
                 $exeatRequest,
                 $user,
-                $validated['comment']
+                $validated['comment'],
+                $currentStatus
             );
             
             // Create audit log
@@ -909,9 +952,10 @@ public function approve(StaffExeatApprovalRequest $request, $id)
                 'message' => 'Comment sent to student successfully',
                 'notifications' => $notifications
             ]);
-            
         } catch (\Exception $e) {
-            return response()->json(['message' => 'Failed to send comment: ' . $e->getMessage()], 500);
+            return response()->json([
+                'message' => 'Failed to send comment: ' . $e->getMessage()
+            ], 500);
         }
     }
     

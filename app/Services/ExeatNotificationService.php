@@ -368,6 +368,26 @@ class ExeatNotificationService
     }
 
     /**
+     * Create SMS notification for staff comment (raw comment only).
+     */
+    protected function createStaffCommentSmsNotification(ExeatRequest $exeatRequest, Student $student, string $comment): ExeatNotification
+    {
+        return new ExeatNotification([
+            'exeat_request_id' => $exeatRequest->id,
+            'recipient_type' => get_class($student),
+            'recipient_id' => $student->id,
+            'notification_type' => 'staff_comment_sms',
+            'title' => 'Staff Comment',
+            'message' => $comment, // Raw comment only, no template
+            'priority' => ExeatNotification::PRIORITY_HIGH,
+            'data' => [
+                'status' => $exeatRequest->status,
+                'delivery_type' => 'sms_only'
+            ]
+        ]);
+    }
+
+    /**
      * Create a notification for an exeat request.
      */
     public function createNotification(
@@ -376,7 +396,8 @@ class ExeatNotificationService
         string $type,
         string $title,
         string $message,
-        string $priority = ExeatNotification::PRIORITY_MEDIUM
+        string $priority = ExeatNotification::PRIORITY_MEDIUM,
+        array $data = []
     ): Collection {
         $notifications = collect();
 
@@ -389,6 +410,7 @@ class ExeatNotificationService
                 'title' => $title,
                 'message' => $message,
                 'priority' => $priority,
+                'data' => $data,
             ]);
 
             $notifications->push($notification);
@@ -513,7 +535,7 @@ class ExeatNotificationService
     /**
      * Send staff comment notification to a specific student via email and SMS.
      * The notification is only sent to the student associated with the exeat request.
-     * Uses a template that includes both student and staff names.
+     * Email uses full template, SMS uses only the raw comment for character efficiency.
      */
     public function sendStaffCommentNotification(
         ExeatRequest $exeatRequest,
@@ -558,43 +580,48 @@ class ExeatNotificationService
             }
         }
 
-        // Create template with required fields that cannot be removed
-        // Note: Email template already adds "Dear [name]," so we don't include it here
-        $messageTemplate = "Please see {$staffName}/{$staffOffice} regarding your exeat request at your earliest convenience.\n\nThank you,\nsigned: {$staffName}, {$staffOffice}";
-
-        // If comment is provided, use it as the message body, but ensure names are preserved
-        if (!empty($comment)) {
-            // Make sure the comment still contains the required elements
-            // Note: We don't add "Dear" prefix as the email template handles that
-            if (!str_contains($comment, $studentName)) {
-                $comment = "{$studentName},\n\n" . $comment;
-            }
-            if (!str_contains($comment, "signed: {$staffName}")) {
-                $comment .= "\n\nThank you,\nsigned: {$staffName}, {$staffOffice}";
-            }
-            $messageTemplate = $comment;
+        // Create full template for email (with proper formatting)
+        $emailMessage = $comment;
+        if (!str_contains($comment, "signed: {$staffName}")) {
+            $emailMessage .= "\n\nThank you,\nsigned: {$staffName}, {$staffOffice}";
         }
 
-        $title = "Comment from {$staffName}";
-        $message = $messageTemplate;
+        // SMS message is just the raw comment (no template, no student name)
+        $smsMessage = $comment;
 
-        // Create the notification
+        $title = "Comment from {$staffName}";
+
+        // Create the in-app notification with email message (full template)
         $notifications = $this->createNotification(
             $exeatRequest,
             $recipients,
             ExeatNotification::TYPE_STAFF_COMMENT,
             $title,
-            $message,
-            ExeatNotification::PRIORITY_HIGH
+            $emailMessage,
+            ExeatNotification::PRIORITY_HIGH,
+            [
+                'status' => $exeatRequest->status,
+                'staff_id' => $staff->id,
+                'staff_name' => $staffName,
+                'staff_office' => $staffOffice,
+                'raw_comment' => $comment
+            ]
         );
 
-        // Get the student notification and deliver via SMS and email directly
+        // Handle email and SMS delivery separately with different messages
         foreach ($notifications as $notification) {
-            // Deliver via SMS immediately
-            $this->deliveryService->deliverNotification($notification, 'sms');
-
-            // Deliver email directly instead of queuing
+            // Deliver email with full template
             $this->deliveryService->deliverNotification($notification, 'email');
+
+            // Create a separate SMS notification with just the raw comment
+            $smsNotification = $this->createStaffCommentSmsNotification(
+                $exeatRequest, 
+                $student, 
+                $smsMessage
+            );
+            
+            // Deliver SMS with raw comment only
+            $this->deliveryService->deliverNotification($smsNotification, 'sms');
 
             // Add email to notification's delivery methods for tracking
             if (!in_array('email', $notification->delivery_methods ?? [])) {
