@@ -877,12 +877,39 @@ class ExeatNotificationService
 
     protected function getHostelStaff(ExeatRequest $exeatRequest): array
     {
-        // Get hostel admin for the student's hostel
-        return Staff::whereHas('exeat_roles', function ($query) {
-            $query->where('name', 'hostel_admin');
+        // Get specific hostel admin for the student's accommodation
+        $studentAccommodation = $exeatRequest->student_accommodation;
+        
+        if (!empty($studentAccommodation)) {
+            // Find the hostel by name
+            $hostel = \App\Models\VunaAccomodation::where('name', $studentAccommodation)->first();
+            
+            if ($hostel) {
+                // Get staff assigned to this specific hostel
+                $assignedStaff = \App\Models\HostelAdminAssignment::where('vuna_accomodation_id', $hostel->id)
+                    ->where('status', 'active')
+                    ->with('staff')
+                    ->get();
+                
+                if ($assignedStaff->isNotEmpty()) {
+                    return $assignedStaff->map(function ($assignment) {
+                        return [
+                            'type' => 'staff',
+                            'id' => $assignment->staff_id
+                        ];
+                    })->toArray();
+                }
+            }
+        }
+        
+        // Fallback: Get all hostel admins if no specific assignment found
+        return Staff::whereHas('exeatRoles', function ($query) {
+            $query->whereHas('role', function ($roleQuery) {
+                $roleQuery->where('name', 'hostel_admin');
+            });
         })->get()->map(function ($staff) {
             return [
-                'type' => ExeatNotification::RECIPIENT_STAFF,
+                'type' => 'staff',
                 'id' => $staff->id
             ];
         })->toArray();

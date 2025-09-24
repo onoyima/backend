@@ -87,6 +87,64 @@ class StaffExeatRequestController extends Controller
         return 'unknown';
     }
 
+    /**
+     * Apply hostel-based filtering for hostel admins
+     */
+    private function applyHostelFiltering($query, $user, $roleNames)
+    {
+        // If user is dean, dean2, or admin, they can see all exeat requests
+        if (array_intersect(['dean', 'dean2', 'admin'], $roleNames)) {
+            return $query;
+        }
+
+        // If user has hostel_admin role, filter by assigned hostels
+        if (in_array('hostel_admin', $roleNames)) {
+            $assignedHostels = \App\Models\HostelAdminAssignment::where('staff_id', $user->id)
+                ->where('status', 'active')
+                ->with('hostel')
+                ->get();
+
+            if ($assignedHostels->isNotEmpty()) {
+                $hostelNames = $assignedHostels->pluck('hostel.name')->toArray();
+                $query->whereIn('student_accommodation', $hostelNames);
+            } else {
+                // If hostel admin has no assignments, they see nothing
+                $query->where('id', -1); // Impossible condition to return empty result
+            }
+        }
+
+        return $query;
+    }
+
+    /**
+     * Check if user has access to specific exeat request based on hostel assignment
+     */
+    private function hasHostelAccess($user, $exeatRequest, $roleNames)
+    {
+        // If user is dean, dean2, or admin, they have access to all
+        if (array_intersect(['dean', 'dean2', 'admin'], $roleNames)) {
+            return true;
+        }
+
+        // If user has hostel_admin role, check hostel assignment
+        if (in_array('hostel_admin', $roleNames)) {
+            $assignedHostels = \App\Models\HostelAdminAssignment::where('staff_id', $user->id)
+                ->where('status', 'active')
+                ->with('hostel')
+                ->get();
+
+            if ($assignedHostels->isEmpty()) {
+                return false; // No hostel assignments
+            }
+
+            $hostelNames = $assignedHostels->pluck('hostel.name')->toArray();
+            return in_array($exeatRequest->student_accommodation, $hostelNames);
+        }
+
+        // For other roles, default access rules apply
+        return true;
+    }
+
     public function index(Request $request)
     {
         $user = $request->user();
@@ -103,6 +161,9 @@ class StaffExeatRequestController extends Controller
         }
 
         $query = ExeatRequest::query()->with('student:id,fname,lname,passport')->whereIn('status', $allowedStatuses);
+
+        // Apply hostel-based filtering for hostel admins
+        $query = $this->applyHostelFiltering($query, $user, $roleNames);
 
         if ($request->has('status')) {
             $query->where('status', $request->input('status'));
@@ -192,6 +253,11 @@ class StaffExeatRequestController extends Controller
 
         if (!in_array($exeatRequest->status, $allowedStatuses)) {
             return response()->json(['message' => 'You do not have permission to view this request.'], 403);
+        }
+
+        // Check hostel-based access for hostel admins
+        if (!$this->hasHostelAccess($user, $exeatRequest, $roleNames)) {
+            return response()->json(['message' => 'You do not have permission to view this request from this hostel.'], 403);
         }
 
         return response()->json(['exeat_request' => $exeatRequest]);

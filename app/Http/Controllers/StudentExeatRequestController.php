@@ -16,6 +16,7 @@ use App\Models\AuditLog;
 use App\Models\ExeatApproval;
 use App\Services\ExeatNotificationService;
 use App\Models\ExeatNotification;
+use App\Models\StudentExeatDebt;
 
 class StudentExeatRequestController extends Controller
 {
@@ -38,6 +39,39 @@ class StudentExeatRequestController extends Controller
             'return_date' => 'required|date|after_or_equal:departure_date',
             'preferred_mode_of_contact' => 'required|in:whatsapp,text,phone_call,any',
         ]);
+
+        // Check for unpaid exeat debts
+        $unpaidDebts = \App\Models\StudentExeatDebt::where('student_id', $user->id)
+            ->whereIn('payment_status', ['unpaid', 'paid']) // Include 'paid' but not yet cleared
+            ->with('exeatRequest:id,departure_date,return_date')
+            ->get();
+
+        if ($unpaidDebts->count() > 0) {
+            $totalDebt = $unpaidDebts->sum('amount');
+            $debtDetails = $unpaidDebts->map(function ($debt) {
+                return [
+                    'debt_id' => $debt->id,
+                    'amount' => $debt->amount,
+                    'overdue_hours' => $debt->overdue_hours,
+                    'payment_status' => $debt->payment_status,
+                    'exeat_request_id' => $debt->exeat_request_id,
+                    'departure_date' => $debt->exeatRequest->departure_date ?? null,
+                    'return_date' => $debt->exeatRequest->return_date ?? null,
+                ];
+            });
+
+            return response()->json([
+                'status' => 'error',
+                'message' => 'You have outstanding exeat debts that must be cleared before creating a new exeat request.',
+                'details' => [
+                    'total_debt_amount' => $totalDebt,
+                    'number_of_debts' => $unpaidDebts->count(),
+                    'debts' => $debtDetails,
+                    'payment_instructions' => 'Please pay your outstanding debts through the payment system or contact the admin office for assistance.'
+                ]
+            ], 403);
+        }
+
         // Get student academic info for matric_no
         $studentAcademic = StudentAcademic::where('student_id', $user->id)->first();
         // Get parent/guardian contact info
@@ -49,7 +83,6 @@ class StudentExeatRequestController extends Controller
             $accommodationModel = VunaAccomodation::find($accommodationHistory->vuna_accomodation_id);
             $accommodation = $accommodationModel ? $accommodationModel->name : null;
         }
-        // Prevent new request if previous is not completed
         // Prevent new request if previous is not completed
         $existing = ExeatRequest::where('student_id', $user->id)
             ->whereNotIn('status', ['completed', 'rejected']) // Optional: allow new request after rejection

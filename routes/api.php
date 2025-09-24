@@ -27,6 +27,7 @@ use App\Http\Controllers\StaffExeatStatisticsController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\AdminBulkOperationsController;
 use App\Http\Controllers\StudentExeatDebtController;
+use App\Http\Controllers\HostelAdminController;
 
 /*
 |--------------------------------------------------------------------------
@@ -154,6 +155,17 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/{id}/clear', [StudentExeatDebtController::class, 'clearDebt']);
     });
 
+    // Hostel admin assignment routes
+    Route::prefix('hostel-assignments')->group(function () {
+        Route::get('/', [HostelAdminController::class, 'index']);
+        Route::get('/options', [HostelAdminController::class, 'getAssignmentOptions']);
+        Route::post('/', [HostelAdminController::class, 'store']);
+        Route::put('/{id}', [HostelAdminController::class, 'update']);
+        Route::delete('/{id}', [HostelAdminController::class, 'destroy']);
+        Route::get('/staff/{staffId}', [HostelAdminController::class, 'getStaffAssignments']);
+        Route::get('/hostel/{hostelId}', [HostelAdminController::class, 'getHostelStaff']);
+    });
+
     // Admin notification routes
     Route::prefix('notifications')->group(function () {
         Route::get('/', [AdminNotificationController::class, 'index']);
@@ -223,6 +235,17 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::post('/bulk-reject', [AdminBulkOperationsController::class, 'bulkReject']);
             Route::post('/special-dean-override', [AdminBulkOperationsController::class, 'specialDeanOverride']);
             Route::get('/statistics', [AdminBulkOperationsController::class, 'getStatistics']);
+        });
+
+        // Dean hostel admin assignment routes
+        Route::prefix('hostel-assignments')->group(function () {
+            Route::get('/', [HostelAdminController::class, 'index']);
+            Route::get('/options', [HostelAdminController::class, 'getAssignmentOptions']);
+            Route::post('/', [HostelAdminController::class, 'store']);
+            Route::put('/{id}', [HostelAdminController::class, 'update']);
+            Route::delete('/{id}', [HostelAdminController::class, 'destroy']);
+            Route::get('/staff/{staffId}', [HostelAdminController::class, 'getStaffAssignments']);
+            Route::get('/hostel/{hostelId}', [HostelAdminController::class, 'getHostelStaff']);
         });
     });
 
