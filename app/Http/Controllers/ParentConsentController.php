@@ -171,12 +171,12 @@ class ParentConsentController extends Controller
     }
 
     /**
-     * Send bulk parent consent reminders to Deputy Dean staff.
+     * Send bulk parent consent reminders to Secretary staff.
      */
     public function remind(Request $request)
     {
         try {
-            // Send reminders to Deputy Dean staff about pending parent consents
+            // Send reminders to Secretary staff about pending parent consents
             // Parents do not receive direct notifications
             
             $pendingConsents = ParentConsent::where('consent_status', 'pending')
@@ -186,14 +186,14 @@ class ParentConsentController extends Controller
             $remindersSent = 0;
             
             foreach ($pendingConsents as $consent) {
-                // Notify Deputy Dean staff about pending consent
-                // NotificationJob::dispatch($consent, 'deputy_dean_reminder');
+                // Notify Secretary staff about pending consent
+                // NotificationJob::dispatch($consent, 'secretary_reminder');
                 $remindersSent++;
             }
             
             return response()->json([
                 'success' => true,
-                'message' => "Sent {$remindersSent} reminders to Deputy Dean staff about pending parent consents",
+                'message' => "Sent {$remindersSent} reminders to Secretary staff about pending parent consents",
                 'reminders_sent' => $remindersSent
             ]);
             

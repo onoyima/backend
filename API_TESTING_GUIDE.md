@@ -474,7 +474,7 @@ Content-Type: application/json
         "id": 789,
         "student_id": 123,
         "reason": "Medical appointment",
-        "status": "deputy-dean_review",
+        "status": "secretary_review",
         "created_at": "2024-09-24T13:00:00Z"
     }
 }

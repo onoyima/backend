@@ -56,7 +56,7 @@ class DashboardAnalyticsService
         $awaitingDeanApproval = ExeatRequest::where('status', 'dean_review')->count();
         $pending_requests = ExeatRequest::whereNotIn('status', ['completed', 'rejected', 'hostel_signin', 'security_signin', 'security_signout', 'hostel_signout'])->count();
         $student_outofschool = ExeatRequest::where('status', 'security_signin')->count();
-        $parentRequestpending = ExeatRequest::where('status', 'deputy-dean_review')->count();
+        $parentRequestpending = ExeatRequest::where('status', 'secretary_review')->count();
         $today_requests = ExeatRequest::with([
             'student:id,fname,lname,mname',
             'student.academics:student_id,matric_no'

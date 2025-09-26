@@ -96,7 +96,7 @@ class StudentExeatRequestController extends Controller
         // Get category
         $category = ExeatCategory::find($validated['category_id']);
         $isMedical = strtolower($category->name) === 'medical';
-        $initialStatus = $isMedical ? 'cmd_review' : 'deputy-dean_review';
+        $initialStatus = $isMedical ? 'cmd_review' : 'secretary_review';
         $exeat = ExeatRequest::create([
             'student_id' => $user->id,
             'matric_no' => $studentAcademic ? $studentAcademic->matric_no : null,
@@ -118,7 +118,7 @@ class StudentExeatRequestController extends Controller
         // Create first approval stage
         \App\Models\ExeatApproval::create([
             'exeat_request_id' => $exeat->id,
-            'role' => $isMedical ? 'cmd' : 'deputy_dean',
+            'role' => $isMedical ? 'cmd' : 'secretary',
             'status' => 'pending',
         ]);
 
@@ -133,7 +133,7 @@ class StudentExeatRequestController extends Controller
 
         // Send approval required notification to appropriate staff
         try {
-            $role = $isMedical ? 'cmd' : 'deputy_dean';
+            $role = $isMedical ? 'cmd' : 'secretary';
             $this->notificationService->sendApprovalRequiredNotification($exeat, $role);
         } catch (\Exception $e) {
             Log::error('Failed to send approval required notification', ['error' => $e->getMessage(), 'exeat_id' => $exeat->id]);

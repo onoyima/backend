@@ -399,7 +399,7 @@ class AdminBulkOperationsController extends Controller
 
         $stats = [
             'total_requests' => ExeatRequest::count(),
-            'pending_requests' => ExeatRequest::whereIn('status', ['pending', 'cmd_review', 'deputy-dean_review', 'parent_consent', 'dean_review'])->count(),
+            'pending_requests' => ExeatRequest::whereIn('status', ['pending', 'cmd_review', 'secretary_review', 'parent_consent', 'dean_review'])->count(),
             'in_progress_requests' => ExeatRequest::whereIn('status', ['hostel_signout', 'security_signout', 'security_signin', 'hostel_signin'])->count(),
             'rejected_requests' => ExeatRequest::where('status', 'rejected')->count(),
             'completed_requests' => ExeatRequest::where('status', 'completed')->count(),
@@ -407,7 +407,7 @@ class AdminBulkOperationsController extends Controller
             'status_breakdown' => [
                 'pending' => ExeatRequest::where('status', 'pending')->count(),
                 'cmd_review' => ExeatRequest::where('status', 'cmd_review')->count(),
-                'deputy-dean_review' => ExeatRequest::where('status', 'deputy-dean_review')->count(),
+                'secretary_review' => ExeatRequest::where('status', 'secretary_review')->count(),
                 'parent_consent' => ExeatRequest::where('status', 'parent_consent')->count(),
                 'dean_review' => ExeatRequest::where('status', 'dean_review')->count(),
                 'hostel_signout' => ExeatRequest::where('status', 'hostel_signout')->count(),
@@ -458,10 +458,10 @@ class AdminBulkOperationsController extends Controller
     {
         switch ($currentStatus) {
             case 'pending':
-                return $isMedical ? 'cmd_review' : 'deputy-dean_review';
+                return $isMedical ? 'cmd_review' : 'secretary_review';
             case 'cmd_review':
-                return 'deputy-dean_review';
-            case 'deputy-dean_review':
+                return 'secretary_review';
+            case 'secretary_review':
                 return 'parent_consent';
             case 'parent_consent':
                 return 'dean_review';

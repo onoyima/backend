@@ -71,7 +71,7 @@ class StaffExeatStatisticsController extends Controller
      */
     private function getRoleSpecificStatistics(): array
     {
-        $roles = ['cmd', 'deputy_dean', 'dean', 'hostel_admin', 'security'];
+        $roles = ['cmd', 'secretary', 'dean', 'hostel_admin', 'security'];
         $roleStats = [];
 
         foreach ($roles as $role) {
@@ -107,7 +107,7 @@ class StaffExeatStatisticsController extends Controller
             $request->validate([
                 'date_from' => 'nullable|date',
                 'date_to' => 'nullable|date|after_or_equal:date_from',
-                'role' => 'nullable|string|in:cmd,deputy_dean,dean,hostel_admin,security',
+                'role' => 'nullable|string|in:cmd,secretary,dean,hostel_admin,security',
                 'status' => 'nullable|string|in:pending,approved,rejected,completed'
             ]);
 

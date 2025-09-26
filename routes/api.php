@@ -220,7 +220,7 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::get('/exeat/{exeatId}', [DeanNotificationController::class, 'getExeatNotifications']);
         });
 
-        // Deputy Dean parent consent routes
+        // Secretary parent consent routes
         Route::prefix('staff/parent-consents')->group(function () {
             Route::get('/pending', [StaffExeatRequestController::class, 'getPendingParentConsents']);
             Route::post('/{consentId}/approve', [StaffExeatRequestController::class, 'approveParentConsent']);

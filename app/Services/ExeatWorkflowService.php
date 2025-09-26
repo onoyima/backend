@@ -100,12 +100,12 @@ class ExeatWorkflowService
 
         switch ($exeatRequest->status) {
             case 'pending':
-                $exeatRequest->status = $exeatRequest->is_medical ? 'cmd_review' : 'deputy-dean_review';
+                $exeatRequest->status = $exeatRequest->is_medical ? 'cmd_review' : 'secretary_review';
                 break;
             case 'cmd_review':
-                $exeatRequest->status = 'deputy-dean_review';
+                $exeatRequest->status = 'secretary_review';
                 break;
-            case 'deputy-dean_review':
+            case 'secretary_review':
                 $exeatRequest->status = 'parent_consent';
                 break;
             case 'parent_consent':
@@ -460,15 +460,15 @@ class ExeatWorkflowService
     }
 
     /**
-     * Deputy Dean approves parent consent on behalf of parent.
+     * Secretary approves parent consent on behalf of parent.
      */
-    public function deputyDeanParentConsentApprove(ParentConsent $parentConsent, int $deputyDeanId, string $reason)
+    public function secretaryParentConsentApprove(ParentConsent $parentConsent, int $secretaryId, string $reason)
     {
         $parentConsent->consent_status = 'approved';
         $parentConsent->consent_timestamp = now();
-        $parentConsent->acted_by_staff_id = $deputyDeanId;
-        $parentConsent->action_type = 'deputy_dean_approval';
-        $parentConsent->deputy_dean_reason = $reason;
+        $parentConsent->acted_by_staff_id = $secretaryId;
+        $parentConsent->action_type = 'secretary_approval';
+        $parentConsent->secretary_reason = $reason;
         $parentConsent->save();
 
         $exeatRequest = $parentConsent->exeatRequest;
@@ -492,17 +492,17 @@ class ExeatWorkflowService
 
         $this->createAuditLog(
             $exeatRequest,
-            $deputyDeanId,
+            $secretaryId,
             $exeatRequest->student_id,
-            'deputy_dean_parent_consent_approve',
+            'secretary_parent_consent_approve',
             "Status changed from {$oldStatus} to dean_review",
-            "Deputy Dean approved on behalf of parent. Reason: {$reason}"
+            "Secretary approved on behalf of parent. Reason: {$reason}"
         );
 
-        Log::info('WorkflowService: Deputy Dean approved parent consent', [
+        Log::info('WorkflowService: Secretary approved parent consent', [
             'exeat_id' => $exeatRequest->id,
             'parent_consent_id' => $parentConsent->id,
-            'deputy_dean_id' => $deputyDeanId,
+            'secretary_id' => $secretaryId,
             'reason' => $reason
         ]);
 
@@ -510,15 +510,15 @@ class ExeatWorkflowService
     }
 
     /**
-     * Deputy Dean rejects parent consent on behalf of parent.
+     * Secretary rejects parent consent on behalf of parent.
      */
-    public function deputyDeanParentConsentReject(ParentConsent $parentConsent, int $deputyDeanId, string $reason)
+    public function secretaryParentConsentReject(ParentConsent $parentConsent, int $secretaryId, string $reason)
     {
         $parentConsent->consent_status = 'declined';
         $parentConsent->consent_timestamp = now();
-        $parentConsent->acted_by_staff_id = $deputyDeanId;
-        $parentConsent->action_type = 'deputy_dean_rejection';
-        $parentConsent->deputy_dean_reason = $reason;
+        $parentConsent->acted_by_staff_id = $secretaryId;
+        $parentConsent->action_type = 'secretary_rejection';
+        $parentConsent->secretary_reason = $reason;
         $parentConsent->save();
 
         $exeatRequest = $parentConsent->exeatRequest;
@@ -529,17 +529,17 @@ class ExeatWorkflowService
 
         $this->createAuditLog(
             $exeatRequest,
-            $deputyDeanId,
+            $secretaryId,
             $exeatRequest->student_id,
-            'deputy_dean_parent_consent_reject',
+            'secretary_parent_consent_reject',
             "Status changed from {$oldStatus} to rejected",
-            "Deputy Dean rejected on behalf of parent. Reason: {$reason}"
+            "Secretary rejected on behalf of parent. Reason: {$reason}"
         );
 
-        Log::info('WorkflowService: Deputy Dean rejected parent consent', [
+        Log::info('WorkflowService: Secretary rejected parent consent', [
             'exeat_id' => $exeatRequest->id,
             'parent_consent_id' => $parentConsent->id,
-            'deputy_dean_id' => $deputyDeanId,
+            'secretary_id' => $secretaryId,
             'reason' => $reason
         ]);
 
@@ -778,7 +778,7 @@ protected function sendApprovalNotificationForStage(ExeatRequest $exeatRequest)
 {
     $roleMap = [
         'cmd_review' => 'cmd',
-        'deputy-dean_review' => 'deputy_dean',
+        'secretary_review' => 'secretary',
         'dean_review' => 'dean',
         'hostel_signout' => 'hostel_admin',
         'security_signout' => 'security',

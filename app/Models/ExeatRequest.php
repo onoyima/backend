@@ -233,6 +233,6 @@ class ExeatRequest extends Model
 }
 
 // Status enum for clarity:
-// pending, cmd_review, deputy-dean_review, parent_consent, dean_review,
+// pending, cmd_review, secretary_review, parent_consent, dean_review,
 // hostel_signout, security_signout, security_signin, hostel_signin,
 // completed, rejected, appeal

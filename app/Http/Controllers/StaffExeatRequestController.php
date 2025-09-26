@@ -30,14 +30,14 @@ class StaffExeatRequestController extends Controller
     {
         // Define all workflow statuses (excluding completed, rejected, and appeal)
         $activeStatuses = [
-            'pending', 'cmd_review', 'deputy-dean_review', 'parent_consent',
+            'pending', 'cmd_review', 'secretary_review', 'parent_consent',
             'dean_review', 'hostel_signout', 'security_signout', 'security_signin',
             'hostel_signin', 'cancelled'
         ];
 
         $roleStatusMap = [
             'cmd' => ['cmd_review'],
-            'deputy_dean' => ['deputy-dean_review', 'parent_consent'],
+            'secretary' => ['secretary_review', 'parent_consent'],
             'dean' => $activeStatuses, // Dean can see all active statuses
             'dean2' => $activeStatuses, // Dean2 can see all active statuses
             'admin' => $activeStatuses, // Admin can see all active statuses
@@ -62,7 +62,7 @@ class StaffExeatRequestController extends Controller
     {
         $roleMap = [
             'cmd_review' => 'cmd',
-            'deputy-dean_review' => 'deputy_dean',
+            'secretary_review' => 'secretary',
             'dean_review' => 'dean',
             'hostel_signout' => 'hostel_admin',
             'hostel_signin' => 'hostel_admin',
@@ -185,7 +185,7 @@ class StaffExeatRequestController extends Controller
 
         $totalRequests = ExeatRequest::whereIn('id', $approvalIds)->count();
         $pendingRequests = ExeatRequest::whereIn('id', $approvalIds)
-            ->whereIn('status', ['pending', 'cmd_review', 'deputy-dean_review', 'parent_consent', 'dean_review'])
+            ->whereIn('status', ['pending', 'cmd_review', 'secretary_review', 'parent_consent', 'dean_review'])
             ->count();
         $approvedRequests = ExeatRequest::whereIn('id', $approvalIds)
             ->where('status', 'completed')
@@ -678,7 +678,7 @@ public function approve(StaffExeatApprovalRequest $request, $id)
 
         // Define all possible statuses in the exeat workflow
         $allStatuses = [
-            'pending', 'cmd_review', 'deputy-dean_review', 'parent_consent',
+            'pending', 'cmd_review', 'secretary_review', 'parent_consent',
             'dean_review', 'hostel_signout', 'security_signout', 'security_signin',
             'hostel_signin', 'completed', 'rejected', 'appeal'
         ];
@@ -686,7 +686,7 @@ public function approve(StaffExeatApprovalRequest $request, $id)
         // Map roles to their corresponding statuses that they handle
         $roleStatusMap = [
             'cmd' => ['cmd_review'],
-            'deputy_dean' => ['deputy-dean_review'],
+            'secretary' => ['secretary_review'],
             'dean' => $allStatuses, // Dean can see all statuses
             'dean2' => $allStatuses, // Dean2 can see all statuses
             'admin' => $allStatuses, // Admin can see all statuses
@@ -794,7 +794,7 @@ public function approve(StaffExeatApprovalRequest $request, $id)
     }
 
     /**
-     * Get all pending parent consents that Deputy Dean can act upon.
+     * Get all pending parent consents that Secretary can act upon.
      */
     public function getPendingParentConsents(Request $request)
     {
@@ -803,11 +803,11 @@ public function approve(StaffExeatApprovalRequest $request, $id)
             return response()->json(['message' => 'Unauthorized.'], 403);
         }
 
-        // Check if staff has deputy_dean role
+        // Check if staff has secretary role
         $roleNames = $user->exeatRoles()->with('role')->get()->pluck('role.name')->toArray();
-        if (!in_array('deputy_dean', $roleNames)) {
+        if (!in_array('secretary', $roleNames)) {
             return response()->json([
-                'message' => 'Unauthorized. Only Deputy Dean can access parent consents.'
+                'message' => 'Unauthorized. Only Secretary can access parent consents.'
             ], 403);
         }
 
@@ -858,7 +858,7 @@ public function approve(StaffExeatApprovalRequest $request, $id)
     }
 
     /**
-     * Deputy Dean approves parent consent on behalf of parent.
+     * Secretary approves parent consent on behalf of parent.
      */
     public function approveParentConsent(Request $request, $consentId)
     {
@@ -867,11 +867,11 @@ public function approve(StaffExeatApprovalRequest $request, $id)
             return response()->json(['message' => 'Unauthorized.'], 403);
         }
 
-        // Check if staff has deputy_dean role
+        // Check if staff has secretary role
         $roleNames = $user->exeatRoles()->with('role')->get()->pluck('role.name')->toArray();
-        if (!in_array('deputy_dean', $roleNames)) {
+        if (!in_array('secretary', $roleNames)) {
             return response()->json([
-                'message' => 'Unauthorized. Only Deputy Dean can approve parent consents.'
+                'message' => 'Unauthorized. Only Secretary can approve parent consents.'
             ], 403);
         }
 
@@ -915,9 +915,9 @@ public function approve(StaffExeatApprovalRequest $request, $id)
             $consent->update([
                 'consent_status' => 'approved',
                 'acted_by_staff_id' => $user->id,
-                'action_type' => 'deputy_dean_approval',
-                'action_reason' => $request->reason,
-                'acted_at' => now()
+                'action_type' => 'secretary_approval',
+                'secretary_reason' => $request->reason,
+                'consent_timestamp' => now()
             ]);
 
             // Move exeat request to next stage
@@ -930,8 +930,8 @@ public function approve(StaffExeatApprovalRequest $request, $id)
                 'target_id' => $exeatRequest->id,
                 'staff_id' => $user->id,
                 'student_id' => $exeatRequest->student_id,
-                'action' => 'deputy_dean_parent_consent_approval',
-                'details' => "Deputy Dean approved parent consent on behalf of parent. Reason: {$request->reason}",
+                'action' => 'secretary_parent_consent_approval',
+                'details' => "Secretary approved parent consent on behalf of parent. Reason: {$request->reason}",
                 'timestamp' => now()
             ]);
 
@@ -951,7 +951,7 @@ public function approve(StaffExeatApprovalRequest $request, $id)
     }
 
     /**
-     * Deputy Dean rejects parent consent on behalf of parent.
+     * Secretary rejects parent consent on behalf of parent.
      */
     /**
      * Send a comment to a student regarding their exeat request
@@ -1054,11 +1054,11 @@ public function approve(StaffExeatApprovalRequest $request, $id)
             return response()->json(['message' => 'Unauthorized.'], 403);
         }
 
-        // Check if staff has deputy_dean role
+        // Check if staff has secretary role
         $roleNames = $user->exeatRoles()->with('role')->get()->pluck('role.name')->toArray();
-        if (!in_array('deputy_dean', $roleNames)) {
+        if (!in_array('secretary', $roleNames)) {
             return response()->json([
-                'message' => 'Unauthorized. Only Deputy Dean can reject parent consents.'
+                'message' => 'Unauthorized. Only Secretary can reject parent consents.'
             ], 403);
         }
 
@@ -1100,9 +1100,9 @@ public function approve(StaffExeatApprovalRequest $request, $id)
             $consent->update([
                 'consent_status' => 'rejected',
                 'acted_by_staff_id' => $user->id,
-                'action_type' => 'deputy_dean_rejection',
-                'action_reason' => $request->reason,
-                'acted_at' => now()
+                'action_type' => 'secretary_rejection',
+                'secretary_reason' => $request->reason,
+                'consent_timestamp' => now()
             ]);
 
             // Move exeat request to rejected status
@@ -1115,8 +1115,8 @@ public function approve(StaffExeatApprovalRequest $request, $id)
                 'target_id' => $exeatRequest->id,
                 'staff_id' => $user->id,
                 'student_id' => $exeatRequest->student_id,
-                'action' => 'deputy_dean_parent_consent_rejection',
-                'details' => "Deputy Dean rejected parent consent on behalf of parent. Reason: {$request->reason}",
+                'action' => 'secretary_parent_consent_rejection',
+                'details' => "Secretary rejected parent consent on behalf of parent. Reason: {$request->reason}",
                 'timestamp' => now()
             ]);
 
@@ -1136,7 +1136,7 @@ public function approve(StaffExeatApprovalRequest $request, $id)
     }
 
     /**
-     * Get statistics for Deputy Dean parent consent actions.
+     * Get statistics for Secretary parent consent actions.
      */
     public function getParentConsentStats()
     {
@@ -1145,11 +1145,11 @@ public function approve(StaffExeatApprovalRequest $request, $id)
             return response()->json(['message' => 'Unauthorized.'], 403);
         }
 
-        // Check if staff has deputy_dean role
+        // Check if staff has secretary role
         $roleNames = $user->exeatRoles()->with('role')->get()->pluck('role.name')->toArray();
-        if (!in_array('deputy_dean', $roleNames)) {
+        if (!in_array('secretary', $roleNames)) {
             return response()->json([
-                'message' => 'Unauthorized. Only Deputy Dean can access parent consent statistics.'
+                'message' => 'Unauthorized. Only Secretary can access parent consent statistics.'
             ], 403);
         }
 
@@ -1159,25 +1159,25 @@ public function approve(StaffExeatApprovalRequest $request, $id)
             })
             ->count();
 
-        $totalActedByDeputyDean = \App\Models\ParentConsent::where('acted_by_staff_id', $user->id)
-            ->whereIn('action_type', ['deputy_dean_approval', 'deputy_dean_rejection'])
+        $totalActedBySecretary = \App\Models\ParentConsent::where('acted_by_staff_id', $user->id)
+            ->whereIn('action_type', ['secretary_approval', 'secretary_rejection'])
             ->count();
 
-        $approvedByDeputyDean = \App\Models\ParentConsent::where('acted_by_staff_id', $user->id)
-            ->where('action_type', 'deputy_dean_approval')
+        $approvedBySecretary = \App\Models\ParentConsent::where('acted_by_staff_id', $user->id)
+            ->where('action_type', 'secretary_approval')
             ->count();
 
-        $rejectedByDeputyDean = \App\Models\ParentConsent::where('acted_by_staff_id', $user->id)
-            ->where('action_type', 'deputy_dean_rejection')
+        $rejectedBySecretary = \App\Models\ParentConsent::where('acted_by_staff_id', $user->id)
+            ->where('action_type', 'secretary_rejection')
             ->count();
 
         return response()->json([
             'message' => 'Parent consent statistics retrieved successfully.',
             'data' => [
                 'pending_consents' => $totalPending,
-                'total_acted_by_deputy_dean' => $totalActedByDeputyDean,
-                'approved_by_deputy_dean' => $approvedByDeputyDean,
-                'rejected_by_deputy_dean' => $rejectedByDeputyDean
+                'total_acted_by_secretary' => $totalActedBySecretary,
+                'approved_by_secretary' => $approvedBySecretary,
+                'rejected_by_secretary' => $rejectedBySecretary
             ]
         ]);
     }

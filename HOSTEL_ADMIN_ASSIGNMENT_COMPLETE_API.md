@@ -1226,7 +1226,7 @@ Content-Type: application/json
         "destination": "Lagos",
         "departure_date": "2024-09-25",
         "return_date": "2024-09-27",
-        "status": "deputy-dean_review",
+        "status": "secretary_review",
         "created_at": "2024-09-24T13:00:00Z"
     }
 }

@@ -14,7 +14,7 @@ class ExeatApproval extends Model
     ];
 
     /**
-     * The role of the staff member for this approval step (dean, deputy_dean, cmd, etc.)
+     * The role of the staff member for this approval step (dean, secretary, cmd, etc.)
      * Used to enforce workflow logic in controllers.
      */
     public function exeatRequest()

@@ -163,7 +163,7 @@ class ExeatHistoryController extends Controller
         
         // Validate status - include all workflow statuses
         $validStatuses = [
-            'pending', 'cmd_review', 'deputy-dean_review', 'parent_consent', 
+            'pending', 'cmd_review', 'secretary_review', 'parent_consent', 
             'dean_review', 'hostel_signout', 'security_signout', 'security_signin', 
             'hostel_signin', 'completed', 'approved', 'rejected', 'cancelled'
         ];
@@ -383,7 +383,7 @@ class ExeatHistoryController extends Controller
         
         // Validate status - include all workflow statuses
         $validStatuses = [
-            'pending', 'cmd_review', 'deputy-dean_review', 'parent_consent', 
+            'pending', 'cmd_review', 'secretary_review', 'parent_consent', 
             'dean_review', 'hostel_signout', 'security_signout', 'security_signin', 
             'hostel_signin', 'completed', 'approved', 'rejected', 'cancelled'
         ];
@@ -468,21 +468,21 @@ class ExeatHistoryController extends Controller
     {
         // Define all workflow statuses
         $activeStatuses = [
-            'pending', 'cmd_review', 'deputy-dean_review', 'parent_consent',
+            'pending', 'cmd_review', 'secretary_review', 'parent_consent',
             'dean_review', 'hostel_signout', 'security_signout', 'security_signin',
             'hostel_signin', 'cancelled'
         ];
 
         // Define all statuses including completed ones for admin/dean
         $allStatuses = [
-            'pending', 'cmd_review', 'deputy-dean_review', 'parent_consent',
+            'pending', 'cmd_review', 'secretary_review', 'parent_consent',
             'dean_review', 'hostel_signout', 'security_signout', 'security_signin',
             'hostel_signin', 'completed', 'approved', 'rejected', 'cancelled'
         ];
 
         $roleStatusMap = [
             'cmd' => ['cmd_review'],
-            'deputy_dean' => ['deputy-dean_review', 'parent_consent'],
+            'secretary' => ['secretary_review', 'parent_consent'],
             'dean' => $allStatuses, // Dean can see all statuses including completed
             'dean2' => $allStatuses, // Dean2 can see all statuses including completed
             'admin' => $allStatuses, // Admin can see all statuses including completed

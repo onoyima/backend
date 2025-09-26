@@ -46,7 +46,7 @@ class AuthServiceProvider extends ServiceProvider
         Gate::define('viewStaffDashboard', function ($user) {
             if ($user instanceof Staff) {
                 $roleNames = $user->exeatRoles()->with('role')->get()->pluck('role.name')->toArray();
-                $allowedRoles = ['staff', 'teacher', 'housemaster', 'security', 'dean', 'admin', 'super_admin', 'cmd', 'deputy_dean', 'hostel_admin'];
+                $allowedRoles = ['staff', 'teacher', 'housemaster', 'security', 'dean', 'admin', 'super_admin', 'cmd', 'secretary', 'hostel_admin'];
                 return !empty(array_intersect($roleNames, $allowedRoles));
             }
             return false;
@@ -71,7 +71,7 @@ class AuthServiceProvider extends ServiceProvider
         Gate::define('viewDashboardWidgets', function ($user) {
             if ($user instanceof Staff) {
                 $roleNames = $user->exeatRoles()->with('role')->get()->pluck('role.name')->toArray();
-                $allowedRoles = ['staff', 'teacher', 'housemaster', 'security', 'dean', 'admin', 'super_admin', 'cmd', 'deputy_dean', 'hostel_admin'];
+                $allowedRoles = ['staff', 'teacher', 'housemaster', 'security', 'dean', 'admin', 'super_admin', 'cmd', 'secretary', 'hostel_admin'];
                 return !empty(array_intersect($roleNames, $allowedRoles));
             } elseif ($user instanceof Student) {
                 return true; // Students can view basic dashboard widgets

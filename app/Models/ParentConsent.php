@@ -19,7 +19,7 @@ class ParentConsent extends Model
         'consent_timestamp',
         'acted_by_staff_id',
         'action_type',
-        'deputy_dean_reason',
+        'secretary_reason',
         'notification_status',
         'status_message'
     ];

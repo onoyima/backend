@@ -8,9 +8,9 @@ $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
 
 echo "=== DEPUTY DEAN APPROVAL DEBUG ===\n\n";
 
-// 1. Check exeat requests in deputy-dean_review status
-$deputyDeanRequests = \App\Models\ExeatRequest::where('status', 'deputy-dean_review')->get();
-echo "1. Exeat requests in deputy-dean_review status: " . $deputyDeanRequests->count() . "\n";
+// 1. Check exeat requests in secretary_review status
+$deputyDeanRequests = \App\Models\ExeatRequest::where('status', 'secretary_review')->get();
+echo "1. Exeat requests in secretary_review status: " . $deputyDeanRequests->count() . "\n";
 
 foreach ($deputyDeanRequests as $request) {
     echo "   - Exeat ID: {$request->id}, Student ID: {$request->student_id}, Status: {$request->status}\n";
@@ -34,8 +34,8 @@ foreach ($deputyDeanStaff as $assignment) {
     echo "   - Staff ID: {$assignment->staff_id}, Name: {$assignment->staff->fname} {$assignment->staff->lname}\n";
 }
 
-// 4. Check if there are any existing approvals for deputy-dean_review
-echo "\n4. Existing approvals for deputy-dean_review:\n";
+// 4. Check if there are any existing approvals for secretary_review
+echo "\n4. Existing approvals for secretary_review:\n";
 $approvals = \App\Models\ExeatApproval::where('role', 'deputy_dean')->get();
 foreach ($approvals as $approval) {
     echo "   - Exeat ID: {$approval->exeat_request_id}, Staff ID: {$approval->staff_id}, Status: {$approval->status}\n";

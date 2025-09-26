@@ -522,7 +522,7 @@ class ExeatNotificationService
         // Map status names to more user-friendly titles
         $statusTitles = [
             'cmd' => 'Chief Medical Director',
-            'deputy_dean' => 'Deputy Dean of Students Affairs',
+            'secretary' => 'Secretary of Students Affairs',
             'dean' => 'Dean of Students Affairs',
             'dean2' => 'Dean of Students Affairs',
             'hostel_admin' => 'Hostel Administrator',
@@ -613,8 +613,8 @@ class ExeatNotificationService
                 $recipients = array_merge($recipients, $this->getCMDStaff());
                 break;
 
-            case 'deputy-dean_review':
-                $recipients = array_merge($recipients, $this->getDeputyDeanStaff());
+            case 'secretary_review':
+                $recipients = array_merge($recipients, $this->getSecretaryStaff());
                 break;
 
             case 'parent_consent':
@@ -648,8 +648,8 @@ class ExeatNotificationService
         switch ($role) {
             case 'cmd':
                 return $this->getCMDStaff();
-            case 'deputy_dean':
-                return $this->getDeputyDeanStaff();
+            case 'secretary':
+                return $this->getSecretaryStaff();
             case 'dean':
                 return $this->getDeanStaff();
             case 'hostel_admin':
@@ -668,7 +668,7 @@ class ExeatNotificationService
     {
         switch ($reminderType) {
             case 'parent_consent_pending':
-                return $this->getDeputyDeanStaff();
+                return $this->getSecretaryStaff();
             case 'approval_overdue':
                 return $this->getApprovalRecipients($exeatRequest, $exeatRequest->status);
             case 'return_reminder':
@@ -693,7 +693,7 @@ class ExeatNotificationService
             ]],
             $this->getAdminStaff(),
             $this->getDeanStaff(),
-            $this->getDeputyDeanStaff()
+            $this->getSecretaryStaff()
         );
     }
 
@@ -706,7 +706,7 @@ class ExeatNotificationService
         $statusMap = [
             'pending' => 'Pending Review',
             'cmd_review' => 'CMD Review',
-            'deputy-dean_review' => 'Deputy Dean Review',
+            'secretary_review' => 'Secretary Review',
             'parent_consent' => 'Parent Consent',
             'dean_review' => 'Dean Review',
             'approved' => 'Approved',
@@ -746,7 +746,7 @@ class ExeatNotificationService
         $student = $exeatRequest->student;
         $roleMap = [
             'cmd' => 'CMD',
-            'deputy_dean' => 'Deputy Dean',
+            'secretary' => 'Secretary',
             'dean' => 'Dean',
             'hostel_admin' => 'Hostel Administrator',
             'security' => 'Security'
@@ -819,10 +819,10 @@ class ExeatNotificationService
         })->toArray();
     }
 
-    protected function getDeputyDeanStaff(): array
+    protected function getSecretaryStaff(): array
     {
         return Staff::whereHas('exeat_roles', function ($query) {
-            $query->where('name', 'deputy_dean');
+            $query->where('name', 'secretary');
         })->get()->map(function ($staff) {
             return [
                 'type' => ExeatNotification::RECIPIENT_STAFF,
