@@ -258,7 +258,7 @@ class StaffExeatRequestController extends Controller
             return response()->json(['message' => 'Unauthorized.'], 403);
         }
 
-        $exeatRequest = ExeatRequest::with('student:id,fname,lname,passport')->find($id);
+        $exeatRequest = ExeatRequest::with('student:id,fname,lname,passport,phone')->find($id);
         if (!$exeatRequest) {
             return response()->json(['message' => 'Exeat request not found.'], 404);
         }

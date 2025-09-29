@@ -47,7 +47,7 @@ class AdminExeatController extends Controller
             return response()->json(['message' => 'Invalid exeat request ID.'], 400);
         }
 
-        $exeat = ExeatRequest::with(['student'])->find($id);
+        $exeat = ExeatRequest::with(['student:id,fname,lname,passport,phone'])->find($id);
         if (!$exeat) {
             return response()->json(['message' => 'Exeat request not found.'], 404);
         }
@@ -202,7 +202,7 @@ class AdminExeatController extends Controller
             return response()->json(['message' => 'Invalid exeat request ID.'], 400);
         }
 
-        $exeat = ExeatRequest::with(['student'])->find($id);
+        $exeat = ExeatRequest::with(['student:id,fname,lname,passport,phone'])->find($id);
         if (!$exeat) {
             return response()->json(['message' => 'Exeat request not found.'], 404);
         }

@@ -76,12 +76,11 @@ class StudentExeatRequestController extends Controller
         $studentAcademic = StudentAcademic::where('student_id', $user->id)->first();
         // Get parent/guardian contact info
         $studentContact = StudentContact::where('student_id', $user->id)->first();
-        // Get latest accommodation info
-        $accommodationHistory = VunaAccomodationHistory::where('student_id', $user->id)->orderBy('created_at', 'desc')->first();
+        // Get current accommodation info based on active session
+        $accommodationHistory = VunaAccomodationHistory::getCurrentAccommodationForStudent($user->id);
         $accommodation = null;
-        if ($accommodationHistory) {
-            $accommodationModel = VunaAccomodation::find($accommodationHistory->vuna_accomodation_id);
-            $accommodation = $accommodationModel ? $accommodationModel->name : null;
+        if ($accommodationHistory && $accommodationHistory->accommodation) {
+            $accommodation = $accommodationHistory->accommodation->name;
         }
         // Prevent new request if previous is not completed
         $existing = ExeatRequest::where('student_id', $user->id)
@@ -151,13 +150,11 @@ public function profile(Request $request)
 
     $studentAcademic = StudentAcademic::where('student_id', $user->id)->first();
     $studentContact = StudentContact::where('student_id', $user->id)->first();
-    $accommodationHistory = VunaAccomodationHistory::where('student_id', $user->id)
-        ->orderBy('created_at', 'desc')->first();
+    $accommodationHistory = VunaAccomodationHistory::getCurrentAccommodationForStudent($user->id);
 
     $accommodation = null;
-    if ($accommodationHistory) {
-        $accommodationModel = VunaAccomodation::find($accommodationHistory->vuna_accomodation_id);
-        $accommodation = $accommodationModel ? $accommodationModel->name : null;
+    if ($accommodationHistory && $accommodationHistory->accommodation) {
+        $accommodation = $accommodationHistory->accommodation->name;
     }
 
     return response()->json([
@@ -197,7 +194,7 @@ public function categories()
         $user = $request->user();
         $exeat = ExeatRequest::where('id', $id)
             ->where('student_id', $user->id)
-            ->with(['category:id,name', 'student:id,fname,lname,passport'])
+            ->with(['category:id,name', 'student:id,fname,lname,passport,phone'])
             ->first();
         if (!$exeat) {
             return response()->json(['message' => 'Exeat request not found.'], 404);

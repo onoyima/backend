@@ -31,4 +31,31 @@ class VunaAccomodationHistory extends Model
     {
         return $this->belongsTo(Student::class, 'student_id');
     }
+
+    public function vuSession()
+    {
+        return $this->belongsTo(VuSession::class, 'vu_session_id');
+    }
+
+    public function accommodation()
+    {
+        return $this->belongsTo(VunaAccomodation::class, 'vuna_accomodation_id');
+    }
+
+    /**
+     * Get the current accommodation for a student based on active session
+     */
+    public static function getCurrentAccommodationForStudent($studentId)
+    {
+        $currentSession = VuSession::getCurrentSession();
+        
+        if (!$currentSession) {
+            return null;
+        }
+
+        return self::where('student_id', $studentId)
+            ->where('vu_session_id', $currentSession->id)
+            ->with('accommodation')
+            ->first();
+    }
 }

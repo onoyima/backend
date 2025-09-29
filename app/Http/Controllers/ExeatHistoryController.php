@@ -100,12 +100,14 @@ class ExeatHistoryController extends Controller
                     'id' => $exeat->student->id,
                     'name' => $exeat->student->fname . ' ' . $exeat->student->lname,
                     'matric_no' => $exeat->matric_no, // Get matric_no from exeat_requests table
-                    'email' => $exeat->student->email
+                    'email' => $exeat->student->email,
+                    'phone' => $exeat->student->phone
                 ] : [
                     'id' => null,
                     'name' => 'Unknown Student',
                     'matric_no' => $exeat->matric_no,
-                    'email' => null
+                    'email' => null,
+                    'phone' => null
                 ],
                 'category' => $exeat->category ? $exeat->category->name : null,
                 'reason' => $exeat->reason,
@@ -240,12 +242,14 @@ class ExeatHistoryController extends Controller
                     'id' => $exeat->student->id,
                     'name' => $exeat->student->fname . ' ' . $exeat->student->lname,
                     'matric_no' => $exeat->student->matric_no,
-                    'email' => $exeat->student->email
+                    'email' => $exeat->student->email,
+                    'phone' => $exeat->student->phone
                 ] : [
                     'id' => null,
                     'name' => 'Unknown Student',
                     'matric_no' => null,
-                    'email' => null
+                    'email' => null,
+                    'phone' => null
                 ],
                 'category' => $exeat->category ? $exeat->category->name : null,
                 'reason' => $exeat->reason,
@@ -405,7 +409,7 @@ class ExeatHistoryController extends Controller
 
         // Get the exeat request with basic relationships
         $exeat = ExeatRequest::with([
-            'student:id,fname,lname,email,passport',
+            'student:id,fname,lname,email,passport,phone',
             'category:id,name'
         ])
         ->where('id', $id)
