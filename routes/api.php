@@ -41,6 +41,7 @@ use App\Http\Controllers\StaffExeatStatisticsController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\AdminBulkOperationsController;
 use App\Http\Controllers\StudentExeatDebtController;
+use App\Http\Controllers\AdminStudentDebtController;
 use App\Http\Controllers\HostelAdminController;
 
 /*
@@ -162,11 +163,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/staff/{id}/unassign-exeat-role', [AdminStaffController::class, 'unassignExeatRole']);
     Route::put('/exeat-requests/{id}', [AdminExeatController::class, 'edit']);
     
-    // Student debt routes
+    // Student debt routes (Admin management)
     Route::prefix('student-debts')->group(function () {
-        Route::get('/', [StudentExeatDebtController::class, 'index']);
-        Route::get('/{id}', [StudentExeatDebtController::class, 'show']);
-        Route::post('/{id}/clear', [StudentExeatDebtController::class, 'clearDebt']);
+        Route::get('/', [AdminStudentDebtController::class, 'index']);
+        Route::get('/{id}', [AdminStudentDebtController::class, 'show']);
+        Route::post('/{id}/clear', [AdminStudentDebtController::class, 'clearDebt']);
     });
 
     // Hostel admin assignment routes

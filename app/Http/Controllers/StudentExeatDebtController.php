@@ -51,16 +51,16 @@ class StudentExeatDebtController extends Controller
      */
     public function index(Request $request)
     {
-        $query = StudentExeatDebt::with(['student', 'exeatRequest', 'clearedByStaff']);
+        // Get the authenticated student
+        $student = Auth::user();
+        
+        // Only show debts for the authenticated student
+        $query = StudentExeatDebt::with(['student', 'exeatRequest', 'clearedByStaff'])
+            ->where('student_id', $student->id);
 
         // Filter by payment status if provided
         if ($request->has('payment_status')) {
             $query->where('payment_status', $request->payment_status);
-        }
-
-        // Filter by student if provided
-        if ($request->has('student_id')) {
-            $query->where('student_id', $request->student_id);
         }
 
         $debts = $query->orderBy('created_at', 'desc')->paginate(15);
@@ -79,7 +79,13 @@ class StudentExeatDebtController extends Controller
      */
     public function show($id)
     {
-        $debt = StudentExeatDebt::with(['student', 'exeatRequest', 'clearedByStaff'])->findOrFail($id);
+        // Get the authenticated student
+        $student = Auth::user();
+        
+        // Find the debt and ensure it belongs to the authenticated student
+        $debt = StudentExeatDebt::with(['student', 'exeatRequest', 'clearedByStaff'])
+            ->where('student_id', $student->id)
+            ->findOrFail($id);
 
         return response()->json([
             'status' => 'success',
