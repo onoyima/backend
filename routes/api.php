@@ -17,10 +17,8 @@ Route::get('cors-test', function () {
     ], 200);
 });
 
-// Public payment verification route (no auth required for Paystack callback)
-Route::get('student/debts/{id}/verify-payment', [StudentExeatDebtController::class, 'verifyPayment'])->name('student.debts.verify-payment');
-
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\StudentExeatDebtController;
 use App\Http\Controllers\StudentController;
 use App\Http\Controllers\StaffController;
 use App\Http\Controllers\AdminRoleController;
@@ -44,7 +42,7 @@ use App\Http\Controllers\ExeatHistoryController;
 use App\Http\Controllers\StaffExeatStatisticsController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\AdminBulkOperationsController;
-use App\Http\Controllers\StudentExeatDebtController;
+use App\Http\Controllers\AdminExeatController;
 use App\Http\Controllers\AdminStudentDebtController;
 use App\Http\Controllers\HostelAdminController;
 
@@ -65,6 +63,10 @@ Route::get('/parent/consent/{token}/approve', function($token) {
 Route::get('/parent/consent/{token}/decline', function($token) {
     return app(App\Http\Controllers\ParentConsentController::class)->handleWebConsent($token, 'decline');
 });
+
+// Public payment verification route (no auth required for Paystack callback)
+Route::get('student/debts/{id}/verify-payment', [StudentExeatDebtController::class, 'verifyPayment'])->name('student.debts.verify-payment');
+
 // Protected routes
 Route::middleware('auth:sanctum')->group(function () {
     // User profile
