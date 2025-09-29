@@ -134,20 +134,14 @@ class StudentExeatDebtController extends Controller
         $processingCharge = $originalAmount * 0.025; // 2.5% charge
         $totalAmount = $originalAmount + $processingCharge;
 
-        // Initialize Paystack transaction with the total amount
-        $result = $this->paystackService->initializeTransaction([
-            'amount' => $totalAmount * 100, // Paystack expects amount in kobo
-            'email' => $student->email,
-            'reference' => 'EXEAT-DEBT-' . $debt->id . '-' . time(),
-            'metadata' => [
-                'debt_id' => $debt->id,
-                'student_id' => $student->id,
-                'original_amount' => $originalAmount,
-                'processing_charge' => $processingCharge,
-                'total_amount' => $totalAmount,
-                'debt_type' => 'exeat_debt'
-            ]
+        // Update debt with processing charge and total amount before payment initialization
+        $debt->update([
+            'processing_charge' => $processingCharge,
+            'total_amount_with_charge' => $totalAmount
         ]);
+
+        // Initialize Paystack transaction with the debt model and student
+        $result = $this->paystackService->initializeTransaction($debt, $student);
         
         if (!$result['success']) {
             return response()->json([

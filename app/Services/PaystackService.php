@@ -32,7 +32,9 @@ class PaystackService
     public function initializeTransaction(StudentExeatDebt $debt, Student $student)
     {
         try {
-            $amount = $debt->amount * 100; // Convert to kobo (Paystack uses the smallest currency unit)
+            // Use total amount with charge if available, otherwise use original amount
+            $chargeAmount = $debt->total_amount_with_charge ?? $debt->amount;
+            $amount = $chargeAmount * 100; // Convert to kobo (Paystack uses the smallest currency unit)
             $reference = 'EXEAT-DEBT-' . $debt->id . '-' . time();
             
             $response = Http::withHeaders([
@@ -48,6 +50,9 @@ class PaystackService
                     'debt_id' => $debt->id,
                     'student_id' => $student->id,
                     'exeat_request_id' => $debt->exeat_request_id,
+                    'original_amount' => $debt->amount,
+                    'processing_charge' => $debt->processing_charge ?? 0,
+                    'total_amount' => $debt->total_amount_with_charge ?? $debt->amount,
                     'custom_fields' => [
                         [
                             'display_name' => 'Debt Type',
