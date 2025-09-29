@@ -16,17 +16,16 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
-        $middleware->group('api', [
+        $middleware->api(prepend: [
+            \App\Http\Middleware\CustomCorsMiddleware::class,
             \Illuminate\Http\Middleware\HandleCors::class,
-            'throttle:api',
-            SubstituteBindings::class,
-            ApiStatusLogger::class,
         ]);
-
-        // Register route middleware aliases
+        
+        $middleware->append(ApiStatusLogger::class);
+        
         $middleware->alias([
-            'role' => RoleMiddleware::class,
-            'admin' => AdminMiddleware::class,
+            'role' => \App\Http\Middleware\RoleMiddleware::class,
+            'admin' => \App\Http\Middleware\AdminMiddleware::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
