@@ -182,7 +182,7 @@ public function categories()
     {
         $user = $request->user();
         $exeats = ExeatRequest::where('student_id', $user->id)
-            ->with(['category:id,name', 'student:id,fname,lname,passport'])
+            ->with(['category:id,name', 'student:id,fname,lname,passport,phone'])
             ->orderBy('created_at', 'desc')
             ->get();
         return response()->json(['exeat_requests' => $exeats]);
