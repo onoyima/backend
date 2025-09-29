@@ -130,7 +130,7 @@ class NotificationDeliveryService
     {
         $recipient = $this->getRecipientDetails($notification);
         
-        if (!$recipient || !$recipient['email']) {
+        if (!$recipient || empty($recipient['email'])) {
             $log->update([
                 'status' => NotificationDeliveryLog::STATUS_FAILED,
                 'error_message' => 'No email address found for recipient'
@@ -143,8 +143,13 @@ class NotificationDeliveryService
                 'notification' => $notification,
                 'recipient' => $recipient
             ], function ($message) use ($recipient, $notification) {
-                $message->to($recipient['email'], $recipient['name'])
-                    ->subject($notification->title);
+                // Ensure email is a string and not null
+                if (is_string($recipient['email']) && !empty(trim($recipient['email']))) {
+                    $message->to($recipient['email'], $recipient['name'] ?? 'User')
+                        ->subject($notification->title);
+                } else {
+                    throw new Exception('Invalid email address: must be a non-empty string');
+                }
             });
             
             $log->update([

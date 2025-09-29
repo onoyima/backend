@@ -26,7 +26,7 @@ class ExeatNotificationService
     public function sendExeatModifiedNotification(ExeatRequest $exeatRequest, string $message): void
     {
         try {
-            // Notify the student
+            // Notify the student in-app only (email removed to reduce excessive notifications)
             $this->createNotification(
                 $exeatRequest,
                 [['type' => 'App\\Models\\Student', 'id' => $exeatRequest->student_id]],
@@ -35,15 +35,6 @@ class ExeatNotificationService
                 $message,
                 ExeatNotification::PRIORITY_HIGH
             );
-
-            // Send email to student only (SMS removed for cost optimization)
-            $student = Student::find($exeatRequest->student_id);
-            if ($student && $student->email) {
-                $this->deliveryService->queueNotificationDelivery(
-                    $this->createExeatModifiedEmailNotification($exeatRequest, $student, $message),
-                    'email'
-                );
-            }
         } catch (\Exception $e) {
             Log::error('Failed to send exeat modification notification', [
                 'exeat_id' => $exeatRequest->id,
@@ -52,27 +43,7 @@ class ExeatNotificationService
         }
     }
 
-    /**
-     * Create email notification for exeat modification.
-     */
-    protected function createExeatModifiedEmailNotification(ExeatRequest $exeatRequest, Student $student, string $message): ExeatNotification
-    {
-        $emailContent = "Dear {$student->fname},\n\n";
-        $emailContent .= "{$message}\n\n";
-        $emailContent .= "Your exeat request details have been modified by administration.\n";
-        $emailContent .= "Please check your exeat dashboard for the updated details.\n\n";
-        $emailContent .= "Regards,\nExeat Management System";
 
-        return new ExeatNotification([
-            'exeat_request_id' => $exeatRequest->id,
-            'recipient_type' => get_class($student),
-            'recipient_id' => $student->id,
-            'notification_type' => 'exeat_modified_email',
-            'title' => 'Exeat Request Modified',
-            'message' => $emailContent,
-            'priority' => ExeatNotification::PRIORITY_HIGH,
-        ]);
-    }
 
     /**
      * Create SMS notification for exeat modification.
@@ -124,34 +95,7 @@ class ExeatNotificationService
         }
     }
 
-    /**
-     * Create email notification for debt recalculation.
-     *
-     * @param ExeatRequest $exeatRequest
-     * @param Student $student
-     * @param float $additionalAmount
-     * @param float $totalAmount
-     * @return ExeatNotification
-     */
-    protected function createDebtRecalculationEmailNotification(ExeatRequest $exeatRequest, Student $student, float $additionalAmount, float $totalAmount): ExeatNotification
-    {
-        $emailContent = "Dear {$student->fname},\n\n";
-        $emailContent .= "Your exeat debt has been recalculated due to a change in your return date.\n\n";
-        $emailContent .= "Additional Amount: ₦{$additionalAmount}\n";
-        $emailContent .= "Total Debt: ₦{$totalAmount}\n\n";
-        $emailContent .= "Please check your exeat dashboard for more details and payment instructions.\n\n";
-        $emailContent .= "Regards,\nExeat Management System";
 
-        return new ExeatNotification([
-            'exeat_request_id' => $exeatRequest->id,
-            'recipient_type' => get_class($student),
-            'recipient_id' => $student->id,
-            'notification_type' => 'debt_recalculated_email',
-            'title' => 'Exeat Debt Recalculated',
-            'message' => $emailContent,
-            'priority' => ExeatNotification::PRIORITY_HIGH,
-        ]);
-    }
 
     /**
      * Create SMS notification for debt recalculation.
@@ -185,7 +129,7 @@ class ExeatNotificationService
         try {
             $message = "You have incurred a debt of ₦{$amount} due to late return from your exeat.";
 
-            // Notify the student in-app
+            // Notify the student in-app only (email and SMS removed for cost optimization)
             $this->createNotification(
                 $exeatRequest,
                 [['type' => 'student', 'id' => $student->id]],
@@ -194,14 +138,6 @@ class ExeatNotificationService
                 $message,
                 ExeatNotification::PRIORITY_HIGH
             );
-
-            // Send email to student (SMS removed for overdue debts)
-            if ($student->email) {
-                $this->deliveryService->queueNotificationDelivery(
-                    $this->createDebtEmailNotification($exeatRequest, $student, $amount),
-                    'email'
-                );
-            }
         } catch (\Exception $e) {
             Log::error('Failed to send debt notification', [
                 'student_id' => $student->id,
@@ -211,29 +147,7 @@ class ExeatNotificationService
         }
     }
 
-    /**
-     * Create email notification for student debt.
-     */
-    protected function createDebtEmailNotification(ExeatRequest $exeatRequest, Student $student, float $amount): ExeatNotification
-    {
-        $emailContent = "Dear {$student->fname},\n\n";
-        $emailContent .= "This is to inform you that you have incurred a debt of ₦{$amount} due to late return from your exeat.\n";
-        $emailContent .= "Exeat ID: {$exeatRequest->id}\n";
-        $emailContent .= "Departure Date: {$exeatRequest->departure_date}\n";
-        $emailContent .= "Expected Return Date: {$exeatRequest->return_date}\n\n";
-        $emailContent .= "Please make payment and submit proof through the exeat system as soon as possible.\n\n";
-        $emailContent .= "Regards,\nExeat Management System";
 
-        return new ExeatNotification([
-            'exeat_request_id' => $exeatRequest->id,
-            'recipient_type' => get_class($student),
-            'recipient_id' => $student->id,
-            'notification_type' => 'student_debt_email',
-            'title' => 'Exeat Debt Notification',
-            'message' => $emailContent,
-            'priority' => ExeatNotification::PRIORITY_HIGH,
-        ]);
-    }
 
     /**
      * Create SMS notification for student debt.
@@ -255,13 +169,14 @@ class ExeatNotificationService
 
     /**
      * Send notification about student debt clearance.
+     * Email notifications removed - only in-app notifications sent.
      */
     public function sendDebtClearanceNotification(Student $student, ExeatRequest $exeatRequest): void
     {
         try {
             $message = "Your exeat debt has been cleared successfully.";
 
-            // Notify the student in-app
+            // Notify the student in-app only (email removed to reduce notification volume)
             $this->createNotification(
                 $exeatRequest,
                 [['type' => 'App\\Models\\Student', 'id' => $student->id]],
@@ -271,13 +186,10 @@ class ExeatNotificationService
                 ExeatNotification::PRIORITY_MEDIUM
             );
 
-            // Send email to student only (SMS removed for cost optimization)
-            if ($student->email) {
-                $this->deliveryService->queueNotificationDelivery(
-                    $this->createDebtClearanceEmailNotification($exeatRequest, $student),
-                    'email'
-                );
-            }
+            Log::info('Debt clearance notification sent (in-app only)', [
+                'student_id' => $student->id,
+                'exeat_id' => $exeatRequest->id
+            ]);
         } catch (\Exception $e) {
             Log::error('Failed to send debt clearance notification', [
                 'student_id' => $student->id,
@@ -287,27 +199,7 @@ class ExeatNotificationService
         }
     }
 
-    /**
-     * Create email notification for student debt clearance.
-     */
-    protected function createDebtClearanceEmailNotification(ExeatRequest $exeatRequest, Student $student): ExeatNotification
-    {
-        $emailContent = "Dear {$student->fname},\n\n";
-        $emailContent .= "This is to inform you that your exeat debt has been cleared successfully.\n";
-        $emailContent .= "Exeat ID: {$exeatRequest->id}\n";
-        $emailContent .= "Thank you for your prompt payment.\n\n";
-        $emailContent .= "Regards,\nExeat Management System";
 
-        return new ExeatNotification([
-            'exeat_request_id' => $exeatRequest->id,
-            'recipient_type' => get_class($student),
-            'recipient_id' => $student->id,
-            'notification_type' => 'student_debt_cleared_email',
-            'title' => 'Exeat Debt Cleared',
-            'message' => $emailContent,
-            'priority' => ExeatNotification::PRIORITY_MEDIUM,
-        ]);
-    }
 
     /**
      * Create SMS notification for student debt clearance.
