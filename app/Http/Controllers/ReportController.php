@@ -22,17 +22,49 @@ class ReportController extends Controller
     // GET /api/reports/exeats
     public function exeats(Request $request)
     {
-        $exeats = ExeatRequest::all();
+        // Add pagination with configurable per_page parameter
+        $perPage = $request->get('per_page', 50); // Default 50 items per page for reports
+        $perPage = min($perPage, 200); // Maximum 200 items per page for reports
+        
+        $exeats = ExeatRequest::orderBy('created_at', 'desc')->paginate($perPage);
+        
         // For demo, return as JSON; in real app, stream CSV/Excel
-        return response()->json(['exeats' => $exeats]);
+        return response()->json([
+            'exeats' => $exeats->items(),
+            'pagination' => [
+                'current_page' => $exeats->currentPage(),
+                'last_page' => $exeats->lastPage(),
+                'per_page' => $exeats->perPage(),
+                'total' => $exeats->total(),
+                'from' => $exeats->firstItem(),
+                'to' => $exeats->lastItem(),
+                'has_more_pages' => $exeats->hasMorePages()
+            ]
+        ]);
     }
 
     // GET /api/reports/audit-logs
     public function auditLogs(Request $request)
     {
-        $logs = AuditLog::all();
+        // Add pagination with configurable per_page parameter
+        $perPage = $request->get('per_page', 50); // Default 50 items per page for reports
+        $perPage = min($perPage, 200); // Maximum 200 items per page for reports
+        
+        $logs = AuditLog::orderBy('created_at', 'desc')->paginate($perPage);
+        
         // For demo, return as JSON; in real app, stream CSV/Excel
-        return response()->json(['audit_logs' => $logs]);
+        return response()->json([
+            'audit_logs' => $logs->items(),
+            'pagination' => [
+                'current_page' => $logs->currentPage(),
+                'last_page' => $logs->lastPage(),
+                'per_page' => $logs->perPage(),
+                'total' => $logs->total(),
+                'from' => $logs->firstItem(),
+                'to' => $logs->lastItem(),
+                'has_more_pages' => $logs->hasMorePages()
+            ]
+        ]);
     }
 
     /**

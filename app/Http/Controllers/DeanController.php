@@ -81,13 +81,30 @@ class DeanController extends Controller
     // GET /api/dean/exeat-requests
     public function index(Request $request)
     {
+        // Add pagination with configurable per_page parameter
+        $perPage = $request->get('per_page', 20); // Default 20 items per page
+        $perPage = min($perPage, 100); // Maximum 100 items per page
+        
         // For demo: return all approved/verified exeat requests
         $exeats = ExeatRequest::where('status', 'approved')
             ->with('student:id,fname,lname,passport')
             ->orderBy('created_at', 'desc')
-            ->get();
-        Log::info('Dean viewed all approved exeat requests', ['count' => $exeats->count()]);
-        return response()->json(['exeat_requests' => $exeats]);
+            ->paginate($perPage);
+            
+        Log::info('Dean viewed all approved exeat requests', ['count' => $exeats->total()]);
+        
+        return response()->json([
+            'exeat_requests' => $exeats->items(),
+            'pagination' => [
+                'current_page' => $exeats->currentPage(),
+                'last_page' => $exeats->lastPage(),
+                'per_page' => $exeats->perPage(),
+                'total' => $exeats->total(),
+                'from' => $exeats->firstItem(),
+                'to' => $exeats->lastItem(),
+                'has_more_pages' => $exeats->hasMorePages()
+            ]
+        ]);
     }
 
     // POST /api/dean/exeat-requests/bulk-approve

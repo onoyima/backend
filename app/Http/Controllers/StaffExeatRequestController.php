@@ -169,9 +169,24 @@ class StaffExeatRequestController extends Controller
             $query->where('status', $request->input('status'));
         }
 
-        $exeatRequests = $query->orderBy('created_at', 'desc')->get();
+        // Add pagination with configurable per_page parameter
+        $perPage = $request->get('per_page', 20); // Default 20 items per page
+        $perPage = min($perPage, 100); // Maximum 100 items per page
+        
+        $exeatRequests = $query->orderBy('created_at', 'desc')->paginate($perPage);
 
-        return response()->json(['exeat_requests' => $exeatRequests]);
+        return response()->json([
+            'exeat_requests' => $exeatRequests->items(),
+            'pagination' => [
+                'current_page' => $exeatRequests->currentPage(),
+                'last_page' => $exeatRequests->lastPage(),
+                'per_page' => $exeatRequests->perPage(),
+                'total' => $exeatRequests->total(),
+                'from' => $exeatRequests->firstItem(),
+                'to' => $exeatRequests->lastItem(),
+                'has_more_pages' => $exeatRequests->hasMorePages()
+            ]
+        ]);
     }
 
     public function dashboard(Request $request)

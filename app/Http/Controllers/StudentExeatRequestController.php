@@ -258,14 +258,18 @@ public function categories()
             return response()->json(['message' => 'Exeat request not found.'], 404);
         }
 
-        // Get all audit logs related to this exeat request
+        // Add pagination with configurable per_page parameter
+        $perPage = $request->get('per_page', 20); // Default 20 items per page
+        $perPage = min($perPage, 100); // Maximum 100 items per page
+        
+        // Get all audit logs related to this exeat request with pagination
         $auditLogs = AuditLog::where('target_type', 'exeat_request')
             ->where('target_id', $id)
             ->orderBy('timestamp', 'desc')
             ->with(['staff:id,fname,lname', 'student:id,fname,lname,passport'])
-            ->get();
+            ->paginate($perPage);
 
-        // Get all approvals with their staff information
+        // Get all approvals with their staff information (usually small dataset, no pagination needed)
         $approvals = ExeatApproval::where('exeat_request_id', $id)
             ->with('staff:id,fname,lname')
             ->orderBy('updated_at', 'desc')
@@ -273,7 +277,16 @@ public function categories()
 
         // Combine the data for a complete history
         $history = [
-            'audit_logs' => $auditLogs,
+            'audit_logs' => $auditLogs->items(),
+            'audit_logs_pagination' => [
+                'current_page' => $auditLogs->currentPage(),
+                'last_page' => $auditLogs->lastPage(),
+                'per_page' => $auditLogs->perPage(),
+                'total' => $auditLogs->total(),
+                'from' => $auditLogs->firstItem(),
+                'to' => $auditLogs->lastItem(),
+                'has_more_pages' => $auditLogs->hasMorePages()
+            ],
             'approvals' => $approvals,
             'exeat_request' => $exeat
         ];

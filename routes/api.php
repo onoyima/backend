@@ -16,6 +16,10 @@ Route::get('cors-test', function () {
         'headers' => request()->headers->all()
     ], 200);
 });
+
+// Public payment verification route (no auth required for Paystack callback)
+Route::get('student/debts/{id}/verify-payment', [StudentExeatDebtController::class, 'verifyPayment'])->name('student.debts.verify-payment');
+
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\StudentController;
 use App\Http\Controllers\StaffController;
@@ -86,7 +90,6 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::get('/', [StudentExeatDebtController::class, 'index']);
             Route::get('/{id}', [StudentExeatDebtController::class, 'show']);
             Route::post('/{id}/payment-proof', [StudentExeatDebtController::class, 'updatePaymentProof']);
-            Route::get('/{id}/verify-payment', [StudentExeatDebtController::class, 'verifyPayment'])->name('student.debts.verify-payment');
         });
 
         // Student notification routes

@@ -289,22 +289,14 @@ class StudentExeatDebtController extends Controller
     {
         $debt = StudentExeatDebt::findOrFail($id);
         
-        // Get the authenticated student
-        $student = Student::find(Auth::id());
+        // Get the student from the debt record (no authentication required for callback)
+        $student = Student::find($debt->student_id);
 
         if (!$student) {
             return response()->json([
                 'status' => 'error',
                 'message' => 'Student not found'
             ], 404);
-        }
-
-        // Check if the student owns this debt
-        if ($debt->student_id !== $student->id) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Unauthorized. You can only verify your own debt payments.'
-            ], 403);
         }
 
         // Get the reference from the request or use the one stored in the debt
