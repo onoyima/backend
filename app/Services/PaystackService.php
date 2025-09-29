@@ -45,7 +45,7 @@ class PaystackService
                 'amount' => $amount,
                 'email' => $student->email,
                 'reference' => $reference,
-                'callback_url' => route('student.debts.verify-payment', ['debt' => $debt->id]),
+                'callback_url' => route('student.debts.verify-payment', ['id' => $debt->id]),
                 'metadata' => [
                     'debt_id' => $debt->id,
                     'student_id' => $student->id,
