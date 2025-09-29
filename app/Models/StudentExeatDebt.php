@@ -15,6 +15,8 @@ class StudentExeatDebt extends Model
         'student_id',
         'exeat_request_id',
         'amount',
+        'processing_charge',
+        'total_amount_with_charge',
         'overdue_hours',
         'payment_status',
         'payment_reference',
@@ -27,6 +29,8 @@ class StudentExeatDebt extends Model
 
     protected $casts = [
         'amount' => 'decimal:2',
+        'processing_charge' => 'decimal:2',
+        'total_amount_with_charge' => 'decimal:2',
         'overdue_hours' => 'integer',
         'payment_date' => 'datetime',
         'cleared_at' => 'datetime',

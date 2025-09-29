@@ -238,17 +238,14 @@ class DeanController extends Controller
             return;
         }
         
-        $returnDate = new \DateTime($exeat->return_date);
-        $actualReturnDate = new \DateTime($exeat->actual_return_date);
+        $returnDate = \Carbon\Carbon::parse($exeat->return_date);
+        $actualReturnDate = \Carbon\Carbon::parse($exeat->actual_return_date);
+        
+        // Calculate days late using exact 24-hour periods at 11:59 PM
+        $daysLate = $this->calculateDaysOverdue($returnDate, $actualReturnDate);
         
         // Check if student returned late
-        if ($actualReturnDate > $returnDate) {
-            // Calculate hours difference
-            $diff = $returnDate->diff($actualReturnDate);
-            $hoursLate = ($diff->days * 24) + $diff->h;
-            
-            // Calculate debt (10,000 Naira per 24 hours, partial days count as full)
-            $daysLate = ceil($hoursLate / 24);
+        if ($daysLate > 0) {
             $debtAmount = $daysLate * 10000;
             
             // Find existing debt or create new one
@@ -258,7 +255,6 @@ class DeanController extends Controller
             ]);
             
             $debt->amount = $debtAmount;
-            $debt->days_late = $daysLate;
             $debt->payment_status = 'unpaid';
             $debt->save();
             
@@ -440,5 +436,34 @@ class DeanController extends Controller
                 'error' => 'Internal server error'
             ], 500);
         }
+    }
+
+    /**
+     * Calculate days overdue using exact 24-hour periods at 11:59 PM
+     * 
+     * @param \Carbon\Carbon $returnDate
+     * @param \Carbon\Carbon $actualReturnTime
+     * @return int
+     */
+    private function calculateDaysOverdue(\Carbon\Carbon $returnDate, \Carbon\Carbon $actualReturnTime): int
+    {
+        // Set return date to 11:59 PM of the expected return date
+        $returnDateEnd = $returnDate->copy()->setTime(23, 59, 59);
+        
+        // If actual return is before or at 11:59 PM of return date, no debt
+        if ($actualReturnTime->lte($returnDateEnd)) {
+            return 0;
+        }
+        
+        // Calculate full 24-hour periods after 11:59 PM of return date
+        $daysPassed = 0;
+        $currentCheckDate = $returnDateEnd->copy();
+        
+        while ($currentCheckDate->lt($actualReturnTime)) {
+            $currentCheckDate->addDay()->setTime(23, 59, 59);
+            $daysPassed++;
+        }
+        
+        return $daysPassed;
     }
 }

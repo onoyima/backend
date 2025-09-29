@@ -94,7 +94,7 @@ class StudentExeatDebtController extends Controller
     }
 
     /**
-     * Update the payment proof for a student debt.
+     * Process payment for a student debt with 2.5% processing charge.
      *
      * @param  \Illuminate\Http\Request  $request
      * @param  int  $id
@@ -113,36 +113,41 @@ class StudentExeatDebtController extends Controller
             ], 422);
         }
 
-        $debt = StudentExeatDebt::findOrFail($id);
+        // Get the authenticated student
+        $student = Auth::user();
+        
+        // Find the debt and ensure it belongs to the authenticated student
+        $debt = StudentExeatDebt::with(['student', 'exeatRequest'])
+            ->where('student_id', $student->id)
+            ->findOrFail($id);
 
-        // Only allow updating if the debt is unpaid
+        // Only allow payment if the debt is unpaid
         if ($debt->payment_status !== 'unpaid') {
             return response()->json([
                 'status' => 'error',
-                'message' => 'Cannot update payment proof for a debt that is already paid or cleared'
+                'message' => 'Cannot process payment for a debt that is already paid or cleared'
             ], 422);
         }
 
-        // Get the authenticated student
-        $student = Student::find(Auth::id());
+        // Calculate total amount with 2.5% processing charge
+        $originalAmount = $debt->amount;
+        $processingCharge = $originalAmount * 0.025; // 2.5% charge
+        $totalAmount = $originalAmount + $processingCharge;
 
-        if (!$student) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Student not found'
-            ], 404);
-        }
-
-        // Check if the student owns this debt
-        if ($debt->student_id !== $student->id) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Unauthorized. You can only pay your own debts.'
-            ], 403);
-        }
-
-        // Initialize Paystack transaction
-        $result = $this->paystackService->initializeTransaction($debt, $student);
+        // Initialize Paystack transaction with the total amount
+        $result = $this->paystackService->initializeTransaction([
+            'amount' => $totalAmount * 100, // Paystack expects amount in kobo
+            'email' => $student->email,
+            'reference' => 'EXEAT-DEBT-' . $debt->id . '-' . time(),
+            'metadata' => [
+                'debt_id' => $debt->id,
+                'student_id' => $student->id,
+                'original_amount' => $originalAmount,
+                'processing_charge' => $processingCharge,
+                'total_amount' => $totalAmount,
+                'debt_type' => 'exeat_debt'
+            ]
+        ]);
         
         if (!$result['success']) {
             return response()->json([
@@ -150,6 +155,13 @@ class StudentExeatDebtController extends Controller
                 'message' => $result['message']
             ], 422);
         }
+
+        // Update debt with payment reference
+        $debt->update([
+            'payment_reference' => $result['data']['reference'],
+            'processing_charge' => $processingCharge,
+            'total_amount_with_charge' => $totalAmount
+        ]);
         
         return response()->json([
             'status' => 'success',
@@ -157,7 +169,10 @@ class StudentExeatDebtController extends Controller
             'data' => [
                 'authorization_url' => $result['data']['authorization_url'],
                 'access_code' => $result['data']['access_code'],
-                'reference' => $result['data']['reference']
+                'reference' => $result['data']['reference'],
+                'original_amount' => $originalAmount,
+                'processing_charge' => $processingCharge,
+                'total_amount' => $totalAmount
             ]
         ]);
     }

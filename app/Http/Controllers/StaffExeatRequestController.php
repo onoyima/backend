@@ -409,26 +409,23 @@ class StaffExeatRequestController extends Controller
             return;
         }
         
-        // Calculate days late
+        // Calculate days late using exact 24-hour periods at 11:59 PM
         $returnDate = \Carbon\Carbon::parse($exeat->return_date);
         $actualReturnDate = \Carbon\Carbon::parse($exeat->actual_return_date);
-        $daysLate = max(0, $actualReturnDate->diffInDays($returnDate));
+        $daysLate = $this->calculateDaysOverdue($returnDate, $actualReturnDate);
         
         // Only create/update debt if student returned late
-        if ($actualReturnDate->gt($returnDate)) {
+        if ($daysLate > 0) {
             // Check for existing debt
             $debt = StudentExeatDebt::where('exeat_request_id', $exeat->id)->first();
             
-            // Get the fee amount from settings
-            $feePerDay = config('exeat.late_return_fee_per_day', 1000); // Default to 1000 if not set
-            $amount = $daysLate * $feePerDay;
+            // Use standard fee of 10,000 per day
+            $amount = $daysLate * 10000;
             
             if ($debt) {
                 // Update existing debt
                 $debt->update([
                     'amount' => $amount,
-                    'days_late' => $daysLate,
-                    'description' => "Late return fee for {$daysLate} days"
                 ]);
             } else {
                 // Create new debt
@@ -436,9 +433,7 @@ class StaffExeatRequestController extends Controller
                     'student_id' => $exeat->student_id,
                     'exeat_request_id' => $exeat->id,
                     'amount' => $amount,
-                    'days_late' => $daysLate,
                     'payment_status' => 'unpaid',
-                    'description' => "Late return fee for {$daysLate} days"
                 ]);
             }
         } else if ($oldActualReturnDate) {
@@ -1180,5 +1175,34 @@ public function approve(StaffExeatApprovalRequest $request, $id)
                 'rejected_by_secretary' => $rejectedBySecretary
             ]
         ]);
+    }
+
+    /**
+     * Calculate days overdue using exact 24-hour periods at 11:59 PM
+     * 
+     * @param \Carbon\Carbon $returnDate
+     * @param \Carbon\Carbon $actualReturnTime
+     * @return int
+     */
+    private function calculateDaysOverdue(\Carbon\Carbon $returnDate, \Carbon\Carbon $actualReturnTime): int
+    {
+        // Set return date to 11:59 PM of the expected return date
+        $returnDateEnd = $returnDate->copy()->setTime(23, 59, 59);
+        
+        // If actual return is before or at 11:59 PM of return date, no debt
+        if ($actualReturnTime->lte($returnDateEnd)) {
+            return 0;
+        }
+        
+        // Calculate full 24-hour periods after 11:59 PM of return date
+        $daysPassed = 0;
+        $currentCheckDate = $returnDateEnd->copy();
+        
+        while ($currentCheckDate->lt($actualReturnTime)) {
+            $currentCheckDate->addDay()->setTime(23, 59, 59);
+            $daysPassed++;
+        }
+        
+        return $daysPassed;
     }
 }
