@@ -7,10 +7,12 @@ return [
     | Stateful Domains
     |--------------------------------------------------------------------------
     |
-    | Since you are NOT using cookie/CSRF auth, you can leave this empty.
+    | Requests from the following domains / hosts will receive stateful API
+    | authentication cookies. Typically, these should include your local
+    | and production domains which access your API via a frontend SPA.
     |
     */
-    'stateful' => [],
+    'stateful' => explode(',', env('SANCTUM_STATEFUL_DOMAINS', 'localhost,localhost:3000,127.0.0.1,127.0.0.1:8000,::1,exeat.vercel.app,attendance.veritas.edu.ng')),
 
     /*
     |--------------------------------------------------------------------------
