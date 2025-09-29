@@ -135,10 +135,16 @@ class StudentExeatDebtController extends Controller
         $totalAmount = $originalAmount + $processingCharge;
 
         // Update debt with processing charge and total amount before payment initialization
-        $debt->update([
-            'processing_charge' => $processingCharge,
-            'total_amount_with_charge' => $totalAmount
-        ]);
+        // Only update if columns exist (graceful handling for database migration)
+        try {
+            $debt->update([
+                'processing_charge' => $processingCharge,
+                'total_amount_with_charge' => $totalAmount
+            ]);
+        } catch (\Exception $e) {
+            // If columns don't exist, continue without updating them
+            \Log::info('Processing charge columns not available yet: ' . $e->getMessage());
+        }
 
         // Initialize Paystack transaction with the debt model and student
         $result = $this->paystackService->initializeTransaction($debt, $student);
@@ -151,11 +157,19 @@ class StudentExeatDebtController extends Controller
         }
 
         // Update debt with payment reference
-        $debt->update([
-            'payment_reference' => $result['data']['reference'],
-            'processing_charge' => $processingCharge,
-            'total_amount_with_charge' => $totalAmount
-        ]);
+        try {
+            $debt->update([
+                'payment_reference' => $result['data']['reference'],
+                'processing_charge' => $processingCharge,
+                'total_amount_with_charge' => $totalAmount
+            ]);
+        } catch (\Exception $e) {
+            // If processing charge columns don't exist, update only payment reference
+            $debt->update([
+                'payment_reference' => $result['data']['reference']
+            ]);
+            \Log::info('Updated payment reference only, processing charge columns not available: ' . $e->getMessage());
+        }
         
         return response()->json([
             'status' => 'success',
