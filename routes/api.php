@@ -2,6 +2,20 @@
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+
+// CORS test endpoint
+Route::options('cors-test', function () {
+    return response()->json(['message' => 'CORS test successful'], 200);
+});
+
+Route::get('cors-test', function () {
+    return response()->json([
+        'message' => 'CORS test successful',
+        'timestamp' => now(),
+        'origin' => request()->header('Origin'),
+        'headers' => request()->headers->all()
+    ], 200);
+});
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\StudentController;
 use App\Http\Controllers\StaffController;
