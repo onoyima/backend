@@ -78,6 +78,11 @@ class StaffExeatRequestController extends Controller
             return $roleMap[$currentStatus];
         }
 
+        // Special handling for dean2 - can act on ALL statuses with appropriate role mapping
+        if (in_array('dean2', $roles) && isset($roleMap[$currentStatus])) {
+            return $roleMap[$currentStatus]; // dean2 can act as any required role for any status
+        }
+
         // For non-admin users, check if they have the specific role for the current status
         foreach ($roles as $role) {
             if (isset($roleMap[$currentStatus]) && $roleMap[$currentStatus] === $role) {

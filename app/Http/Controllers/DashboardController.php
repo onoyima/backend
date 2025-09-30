@@ -23,6 +23,8 @@ class DashboardController extends Controller
     public function adminDashboard(Request $request): JsonResponse
     {
         $timeframe = $request->get('timeframe', '30'); // days
+        $auditPage = $request->get('audit_page', 1);
+        $auditPerPage = $request->get('audit_per_page', 50);
         
         $data = [
             'overview' => $this->analyticsService->getSystemOverview(),
@@ -30,7 +32,7 @@ class DashboardController extends Controller
             'user_analytics' => $this->analyticsService->getUserAnalytics($timeframe),
             'performance_metrics' => $this->analyticsService->getPerformanceMetrics($timeframe),
             'debt_analytics' => $this->analyticsService->getDebtAnalytics($timeframe),
-            'audit_trail' => $this->analyticsService->getAuditTrail($timeframe, 50),
+            'audit_trail' => $this->analyticsService->getAuditTrail($auditPage, $auditPerPage),
             'audit_statistics' => $this->analyticsService->getAuditStatistics($timeframe),
             'charts' => [
                 'exeat_trends' => $this->analyticsService->getExeatTrendsChart($timeframe),
@@ -62,6 +64,8 @@ class DashboardController extends Controller
     {
         $user = Auth::user();
         $timeframe = $request->get('timeframe', '30');
+        $auditPage = $request->get('audit_page', 1);
+        $auditPerPage = $request->get('audit_per_page', 20);
         
         $data = [
             'overview' => $this->analyticsService->getDeanOverview($user->id),
@@ -69,7 +73,7 @@ class DashboardController extends Controller
             'pending_approvals' => $this->analyticsService->getPendingApprovals($user->id),
             'student_analytics' => $this->analyticsService->getStudentAnalytics($user->id, $timeframe),
             'debt_analytics' => $this->analyticsService->getDebtAnalytics($timeframe),
-            'audit_trail' => $this->analyticsService->getDeanAuditTrail($user->id, $timeframe, 30),
+            'audit_trail' => $this->analyticsService->getDeanAuditTrail($user->id, $auditPage, $auditPerPage),
             'charts' => [
                 'department_trends' => $this->analyticsService->getDepartmentTrendsChart($user->id, $timeframe),
                 'approval_timeline' => $this->analyticsService->getApprovalTimelineChart($user->id, $timeframe),

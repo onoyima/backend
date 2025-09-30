@@ -600,72 +600,81 @@ class DashboardAnalyticsService
     }
 
     /**
-     * Get sanitized audit trail for admin dashboard
+     * Get sanitized audit trail for admin dashboard with pagination
      */
-    public function getAuditTrail(int $days = 30, int $limit = 50): array
+    public function getAuditTrail(int $page = 1, int $perPage = 50): array
     {
-        $startDate = Carbon::now()->subDays($days);
+        // Get paginated audit logs (all logs, no date filtering)
+        $auditLogs = AuditLog::with(['staff:id,fname,lname,email', 'student:id,fname,lname'])
+            ->orderBy('created_at', 'desc')
+            ->paginate($perPage, ['*'], 'page', $page);
 
-        return Cache::remember("audit_trail_{$days}d_{$limit}", 300, function () use ($startDate, $limit) {
-            $auditLogs = AuditLog::with(['staff:id,fname,lname,email', 'student:id,fname,lname'])
-                ->where('created_at', '>=', $startDate)
-                ->orderBy('created_at', 'desc')
-                ->limit($limit)
-                ->get()
-                ->map(function ($log) {
-                    return [
-                        'id' => $log->id,
-                        'action' => $this->sanitizeAction($log->action),
-                        'target_type' => $log->target_type,
-                        'target_id' => $log->target_id,
-                        'actor' => $this->getActorInfo($log),
-                        'timestamp' => $log->created_at->format('Y-m-d H:i:s'),
-                        'details' => $this->sanitizeDetails($log->details),
-                        'formatted_time' => $log->created_at->diffForHumans(),
-                    ];
-                });
-
+        $formattedLogs = $auditLogs->getCollection()->map(function ($log) {
             return [
-                'audit_logs' => $auditLogs,
-                'total_actions' => AuditLog::where('created_at', '>=', $startDate)->count(),
-                'action_summary' => $this->getActionSummary($startDate),
+                'id' => $log->id,
+                'action' => $this->sanitizeAction($log->action),
+                'target_type' => $log->target_type,
+                'target_id' => $log->target_id,
+                'actor' => $this->getActorInfo($log),
+                'timestamp' => $log->created_at->format('Y-m-d H:i:s'),
+                'details' => $this->sanitizeDetails($log->details),
+                'formatted_time' => $log->created_at->diffForHumans(),
             ];
         });
+
+        return [
+            'audit_logs' => $formattedLogs,
+            'pagination' => [
+                'current_page' => $auditLogs->currentPage(),
+                'last_page' => $auditLogs->lastPage(),
+                'per_page' => $auditLogs->perPage(),
+                'total' => $auditLogs->total(),
+                'from' => $auditLogs->firstItem(),
+                'to' => $auditLogs->lastItem(),
+                'has_more_pages' => $auditLogs->hasMorePages(),
+            ],
+            'total_actions' => AuditLog::count(),
+            'action_summary' => $this->getActionSummary(),
+        ];
     }
 
     /**
-     * Get audit trail for dean dashboard (shows all activities like admin)
+     * Get audit trail for dean dashboard with pagination (shows all activities like admin)
      */
-    public function getDeanAuditTrail(int $deanId, int $days = 30, int $limit = 30): array
+    public function getDeanAuditTrail(int $deanId, int $page = 1, int $perPage = 20): array
     {
-        $startDate = Carbon::now()->subDays($days);
+        // Get paginated audit logs (all logs, no date filtering)
+        $auditLogs = AuditLog::with(['staff:id,fname,lname,email', 'student:id,fname,lname'])
+            ->orderBy('created_at', 'desc')
+            ->paginate($perPage, ['*'], 'page', $page);
 
-        return Cache::remember("dean_audit_trail_{$deanId}_{$days}d_{$limit}", 300, function () use ($deanId, $startDate, $limit) {
-            // Get all audit logs (same as admin view)
-            $auditLogs = AuditLog::with(['staff:id,fname,lname,email', 'student:id,fname,lname'])
-                ->where('created_at', '>=', $startDate)
-                ->orderBy('created_at', 'desc')
-                ->limit($limit)
-                ->get()
-                ->map(function ($log) {
-                    return [
-                        'id' => $log->id,
-                        'action' => $this->sanitizeAction($log->action),
-                        'target_type' => $log->target_type,
-                        'target_id' => $log->target_id,
-                        'actor' => $this->getActorInfo($log),
-                        'timestamp' => $log->created_at->format('Y-m-d H:i:s'),
-                        'details' => $this->sanitizeDetails($log->details),
-                        'formatted_time' => $log->created_at->diffForHumans(),
-                    ];
-                });
-
+        $formattedLogs = $auditLogs->getCollection()->map(function ($log) {
             return [
-                'audit_logs' => $auditLogs,
-                'total_actions' => AuditLog::where('created_at', '>=', $startDate)->count(),
-                'action_summary' => $this->getActionSummary($startDate),
+                'id' => $log->id,
+                'action' => $this->sanitizeAction($log->action),
+                'target_type' => $log->target_type,
+                'target_id' => $log->target_id,
+                'actor' => $this->getActorInfo($log),
+                'timestamp' => $log->created_at->format('Y-m-d H:i:s'),
+                'details' => $this->sanitizeDetails($log->details),
+                'formatted_time' => $log->created_at->diffForHumans(),
             ];
         });
+
+        return [
+            'audit_logs' => $formattedLogs,
+            'pagination' => [
+                'current_page' => $auditLogs->currentPage(),
+                'last_page' => $auditLogs->lastPage(),
+                'per_page' => $auditLogs->perPage(),
+                'total' => $auditLogs->total(),
+                'from' => $auditLogs->firstItem(),
+                'to' => $auditLogs->lastItem(),
+                'has_more_pages' => $auditLogs->hasMorePages(),
+            ],
+            'total_actions' => AuditLog::count(),
+            'action_summary' => $this->getActionSummary(),
+        ];
     }
 
     /**
@@ -731,9 +740,180 @@ class DashboardAnalyticsService
     }
 
     /**
+     * Get user activity chart data
+     */
+    public function getUserActivityChart(int $days = 30): array
+    {
+        $startDate = Carbon::now()->subDays($days);
+        
+        return Cache::remember("user_activity_chart_{$days}d", 300, function () use ($startDate) {
+            $dailyActivity = AuditLog::select(
+                DB::raw('DATE(created_at) as date'),
+                DB::raw('COUNT(DISTINCT staff_id) as active_staff'),
+                DB::raw('COUNT(DISTINCT student_id) as active_students')
+            )
+                ->where('created_at', '>=', $startDate)
+                ->groupBy('date')
+                ->orderBy('date')
+                ->get();
+
+            return [
+                'labels' => $dailyActivity->pluck('date')->map(function ($date) {
+                    return Carbon::parse($date)->format('M d');
+                })->toArray(),
+                'datasets' => [
+                    [
+                        'label' => 'Active Staff',
+                        'data' => $dailyActivity->pluck('active_staff')->toArray(),
+                        'borderColor' => '#3B82F6',
+                        'backgroundColor' => 'rgba(59, 130, 246, 0.1)'
+                    ],
+                    [
+                        'label' => 'Active Students',
+                        'data' => $dailyActivity->pluck('active_students')->toArray(),
+                        'borderColor' => '#10B981',
+                        'backgroundColor' => 'rgba(16, 185, 129, 0.1)'
+                    ]
+                ]
+            ];
+        });
+    }
+
+    /**
+     * Get approval rates chart data
+     */
+    public function getApprovalRatesChart(int $days = 30): array
+    {
+        $startDate = Carbon::now()->subDays($days);
+        
+        return Cache::remember("approval_rates_chart_{$days}d", 300, function () use ($startDate) {
+            $approvalData = ExeatRequest::select(
+                DB::raw('DATE(created_at) as date'),
+                DB::raw('COUNT(*) as total_requests'),
+                DB::raw('SUM(CASE WHEN status = "completed" THEN 1 ELSE 0 END) as approved'),
+                DB::raw('SUM(CASE WHEN status = "rejected" THEN 1 ELSE 0 END) as rejected')
+            )
+                ->where('created_at', '>=', $startDate)
+                ->groupBy('date')
+                ->orderBy('date')
+                ->get();
+
+            return [
+                'labels' => $approvalData->pluck('date')->map(function ($date) {
+                    return Carbon::parse($date)->format('M d');
+                })->toArray(),
+                'datasets' => [
+                    [
+                        'label' => 'Approved',
+                        'data' => $approvalData->pluck('approved')->toArray(),
+                        'borderColor' => '#10B981',
+                        'backgroundColor' => 'rgba(16, 185, 129, 0.1)'
+                    ],
+                    [
+                        'label' => 'Rejected',
+                        'data' => $approvalData->pluck('rejected')->toArray(),
+                        'borderColor' => '#EF4444',
+                        'backgroundColor' => 'rgba(239, 68, 68, 0.1)'
+                    ]
+                ]
+            ];
+        });
+    }
+
+    /**
+     * Get recent activities for dashboard
+     */
+    public function getRecentActivities(int $limit = 10): array
+    {
+        return Cache::remember("recent_activities_{$limit}", 300, function () use ($limit) {
+            return AuditLog::with(['staff:id,fname,lname', 'student:id,fname,lname'])
+                ->orderBy('created_at', 'desc')
+                ->limit($limit)
+                ->get()
+                ->map(function ($log) {
+                    return [
+                        'id' => $log->id,
+                        'action' => $this->sanitizeAction($log->action),
+                        'actor' => $this->getActorInfo($log),
+                        'timestamp' => $log->created_at->format('Y-m-d H:i:s'),
+                        'formatted_time' => $log->created_at->diffForHumans(),
+                        'details' => $this->sanitizeDetails($log->details),
+                    ];
+                })
+                ->toArray();
+        });
+    }
+
+    /**
      * Sanitize action names for display
      */
     private function sanitizeAction(string $action): string
+    {
+        $actionMap = [
+            'exeat_request_created' => 'Exeat Request Created',
+            'exeat_request_approved' => 'Exeat Request Approved',
+            'exeat_request_rejected' => 'Exeat Request Rejected',
+            'exeat_request_signed_out' => 'Student Signed Out',
+            'exeat_request_returned' => 'Student Returned',
+            'parent_consent_approved' => 'Parent Consent Approved',
+            'parent_consent_rejected' => 'Parent Consent Rejected',
+            'staff_login' => 'Staff Login',
+            'staff_logout' => 'Staff Logout',
+            'profile_updated' => 'Profile Updated',
+            'debt_created' => 'Debt Created',
+            'debt_paid' => 'Debt Paid',
+            'debt_cleared' => 'Debt Cleared'
+        ];
+
+        return $actionMap[$action] ?? ucwords(str_replace('_', ' ', $action));
+    }
+
+    /**
+     * Get actor information from audit log
+     */
+    private function getActorInfo($log): array
+    {
+        if ($log->staff) {
+            return [
+                'type' => 'staff',
+                'name' => $log->staff->fname . ' ' . $log->staff->lname,
+                'id' => $log->staff->id
+            ];
+        } elseif ($log->student) {
+            return [
+                'type' => 'student',
+                'name' => $log->student->fname . ' ' . $log->student->lname,
+                'id' => $log->student->id
+            ];
+        }
+
+        return [
+            'type' => 'system',
+            'name' => 'System',
+            'id' => null
+        ];
+    }
+
+    /**
+     * Sanitize details for display
+     */
+    private function sanitizeDetails(?string $details): ?string
+    {
+        if (!$details) {
+            return null;
+        }
+
+        // Remove sensitive information
+        $sanitized = preg_replace('/password["\s]*[:=]["\s]*[^,}]+/i', 'password: [HIDDEN]', $details);
+        $sanitized = preg_replace('/token["\s]*[:=]["\s]*[^,}]+/i', 'token: [HIDDEN]', $sanitized);
+        
+        return $sanitized;
+    }
+
+    /**
+     * Sanitize action names for display
+     */
+    private function sanitizeActionOld(string $action): string
     {
         $actionMap = [
             'exeat_request_created' => 'Exeat Request Created',
@@ -797,13 +977,17 @@ class DashboardAnalyticsService
     }
 
     /**
-     * Get action summary for the specified period
+     * Get action summary for all audit logs
      */
-    private function getActionSummary(Carbon $startDate): array
+    private function getActionSummary(?Carbon $startDate = null): array
     {
-        return AuditLog::select('action', DB::raw('COUNT(*) as count'))
-            ->where('created_at', '>=', $startDate)
-            ->groupBy('action')
+        $query = AuditLog::select('action', DB::raw('COUNT(*) as count'));
+        
+        if ($startDate) {
+            $query->where('created_at', '>=', $startDate);
+        }
+        
+        return $query->groupBy('action')
             ->orderBy('count', 'desc')
             ->limit(5)
             ->get()
