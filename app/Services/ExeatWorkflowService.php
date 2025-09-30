@@ -832,8 +832,22 @@ EOT;
      */
     private function checkAndCreateOverdueDebt(ExeatRequest $exeatRequest)
     {
+        // Enhanced debug logging
+        Log::info('DEBUG: checkAndCreateOverdueDebt called', [
+            'exeat_id' => $exeatRequest->id,
+            'student_id' => $exeatRequest->student_id,
+            'return_date' => $exeatRequest->return_date,
+            'current_time' => now()->toDateTimeString()
+        ]);
+        
         $returnDate = \Carbon\Carbon::parse($exeatRequest->return_date);
         $actualReturnTime = now();
+        
+        Log::info('DEBUG: Time comparison', [
+            'return_date_parsed' => $returnDate->toDateTimeString(),
+            'actual_return_time' => $actualReturnTime->toDateTimeString(),
+            'is_late' => $actualReturnTime->gt($returnDate)
+        ]);
         
         // Check if student is returning late
         if ($actualReturnTime->gt($returnDate)) {
@@ -845,6 +859,12 @@ EOT;
             $existingDebt = \App\Models\StudentExeatDebt::where('exeat_request_id', $exeatRequest->id)
                 ->where('payment_status', '!=', 'cleared')
                 ->first();
+            
+            Log::info('DEBUG: Debt creation check', [
+                'days_overdue' => $daysOverdue,
+                'debt_amount' => $debtAmount,
+                'existing_debt' => $existingDebt ? $existingDebt->toArray() : null
+            ]);
             
             if (!$existingDebt) {
                 // Create new debt record
@@ -904,13 +924,28 @@ EOT;
 
         // Handle security signin
         if ($oldStatus === 'security_signin' && $approval->role === 'security') {
+            Log::info('DEBUG: Security signin process started', [
+                'exeat_id' => $exeatRequest->id,
+                'old_status' => $oldStatus,
+                'approval_role' => $approval->role,
+                'security_id' => $approval->staff_id
+            ]);
+            
             $signout = SecuritySignout::where('exeat_request_id', $exeatRequest->id)
                 ->whereNull('signin_time')
                 ->first();
 
+            Log::info('DEBUG: Security signout record found', [
+                'signout_record' => $signout ? $signout->toArray() : null
+            ]);
+
             if ($signout) {
                 $signout->signin_time = now();
                 $signout->save();
+
+                Log::info('DEBUG: About to call checkAndCreateOverdueDebt', [
+                    'exeat_id' => $exeatRequest->id
+                ]);
 
                 // Check if student is returning late and create debt
                 $this->checkAndCreateOverdueDebt($exeatRequest);

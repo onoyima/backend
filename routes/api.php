@@ -70,6 +70,10 @@ Route::get('student/debts/{id}/verify-payment', [StudentExeatDebtController::cla
 // Public API payment verification route (returns JSON for programmatic access)
 Route::get('student/debts/{id}/verify-payment-api', [StudentExeatDebtController::class, 'verifyPaymentApi'])->name('student.debts.verify-payment-api');
 
+// Generic payment endpoints (similar to NYSC payment system)
+Route::get('student/debts/payment/verify', [StudentExeatDebtController::class, 'verifyPaymentGeneric'])->name('student.debts.payment.verify');
+Route::post('student/debts/payment/webhook', [StudentExeatDebtController::class, 'paymentWebhook'])->name('student.debts.payment.webhook');
+
 // Test redirect route
 Route::get('test-redirect', function() {
     $frontendUrl = config('app.frontend_url') . '/payment/result?' . http_build_query([
@@ -104,6 +108,7 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::get('/', [StudentExeatDebtController::class, 'index']);
             Route::get('/{id}', [StudentExeatDebtController::class, 'show']);
             Route::post('/{id}/payment-proof', [StudentExeatDebtController::class, 'updatePaymentProof']);
+            Route::post('/{id}/payment-generic', [StudentExeatDebtController::class, 'initializePaymentGeneric']);
         });
 
         // Student notification routes
