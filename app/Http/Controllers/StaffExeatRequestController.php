@@ -160,7 +160,7 @@ class StaffExeatRequestController extends Controller
             return response()->json(['message' => 'No access to exeat requests.'], 403);
         }
 
-        $query = ExeatRequest::query()->with('student:id,fname,lname,passport')->whereIn('status', $allowedStatuses);
+        $query = ExeatRequest::query()->with('student:id,fname,lname,passport,phone')->whereIn('status', $allowedStatuses);
 
         // Apply hostel-based filtering for hostel admins
         $query = $this->applyHostelFiltering($query, $user, $roleNames);
