@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use App\Models\ExeatApproval;
 use App\Models\ExeatRequest;
 use App\Models\AuditLog;
+use App\Models\StudentExeatDebt;
 use Illuminate\Support\Facades\Log;
 use App\Services\ExeatWorkflowService;
 use App\Http\Requests\StaffExeatApprovalRequest;
@@ -438,21 +439,81 @@ class StaffExeatRequestController extends Controller
             $amount = $daysLate * 10000;
             
             if ($debt) {
+                $oldAmount = $debt->amount;
                 // Update existing debt
                 $debt->update([
                     'amount' => $amount,
                 ]);
+                
+                // Create audit log for debt update
+                AuditLog::create([
+                    'staff_id' => auth()->id(),
+                    'student_id' => $exeat->student_id,
+                    'action' => 'debt_updated_by_staff',
+                    'target_type' => 'student_exeat_debt',
+                    'target_id' => $debt->id,
+                    'details' => json_encode([
+                        'exeat_request_id' => $exeat->id,
+                        'days_late' => $daysLate,
+                        'new_amount' => $amount,
+                        'old_amount' => $oldAmount,
+                        'return_date' => $exeat->return_date,
+                        'actual_return_date' => $exeat->actual_return_date,
+                        'updated_by' => auth()->id()
+                    ]),
+                    'timestamp' => now(),
+                ]);
             } else {
                 // Create new debt
-                StudentExeatDebt::create([
+                $newDebt = StudentExeatDebt::create([
                     'student_id' => $exeat->student_id,
                     'exeat_request_id' => $exeat->id,
                     'amount' => $amount,
                     'payment_status' => 'unpaid',
                 ]);
+                
+                // Create audit log for debt creation
+                AuditLog::create([
+                    'staff_id' => auth()->id(),
+                    'student_id' => $exeat->student_id,
+                    'action' => 'debt_created_by_staff',
+                    'target_type' => 'student_exeat_debt',
+                    'target_id' => $newDebt->id,
+                    'details' => json_encode([
+                        'exeat_request_id' => $exeat->id,
+                        'days_late' => $daysLate,
+                        'amount' => $amount,
+                        'return_date' => $exeat->return_date,
+                        'actual_return_date' => $exeat->actual_return_date,
+                        'created_by' => auth()->id()
+                    ]),
+                    'timestamp' => now(),
+                ]);
             }
         } else if ($oldActualReturnDate) {
             // If the actual return date was changed and is now on time, remove any existing debt
+            $deletedDebts = StudentExeatDebt::where('exeat_request_id', $exeat->id)->get();
+            
+            foreach ($deletedDebts as $deletedDebt) {
+                // Create audit log for debt removal
+                AuditLog::create([
+                    'staff_id' => auth()->id(),
+                    'student_id' => $exeat->student_id,
+                    'action' => 'debt_removed_by_staff',
+                    'target_type' => 'student_exeat_debt',
+                    'target_id' => $deletedDebt->id,
+                    'details' => json_encode([
+                        'exeat_request_id' => $exeat->id,
+                        'removed_amount' => $deletedDebt->amount,
+                        'reason' => 'Student returned on time after staff update',
+                        'return_date' => $exeat->return_date,
+                        'actual_return_date' => $exeat->actual_return_date,
+                        'removed_by' => auth()->id()
+                    ]),
+                    'timestamp' => now(),
+                ]);
+            }
+            
             StudentExeatDebt::where('exeat_request_id', $exeat->id)->delete();
         }
     }

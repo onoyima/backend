@@ -7,6 +7,7 @@ use App\Models\VunaAccomodation;
 use App\Models\Staff;
 use App\Models\ExeatRole;
 use App\Models\StaffExeatRole;
+use App\Models\AuditLog;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -120,6 +121,23 @@ class HostelAdminController extends Controller
                 }
             }
 
+            // Create audit log for hostel assignment
+            AuditLog::create([
+                'staff_id' => $request->user()->id,
+                'student_id' => null,
+                'action' => 'hostel_assignment_created',
+                'target_type' => 'hostel_assignment',
+                'target_id' => $assignment->id,
+                'details' => json_encode([
+                    'hostel_id' => $validated['vuna_accomodation_id'],
+                    'hostel_name' => $assignment->hostel->name ?? 'Unknown',
+                    'assigned_staff_id' => $validated['staff_id'],
+                    'assigned_staff_name' => $assignment->staff->fname . ' ' . $assignment->staff->lname,
+                    'auto_assign_role' => $validated['auto_assign_role'] ?? true,
+                    'notes' => $validated['notes'] ?? null
+                ])
+            ]);
+
             DB::commit();
 
             $assignment->load(['hostel', 'staff']);
@@ -162,7 +180,25 @@ class HostelAdminController extends Controller
         ]);
 
         $assignment = HostelAdminAssignment::findOrFail($id);
+        $oldStatus = $assignment->status;
         $assignment->update($validated);
+
+        // Create audit log for hostel assignment update
+        AuditLog::create([
+            'staff_id' => $request->user()->id,
+            'student_id' => null,
+            'action' => 'hostel_assignment_updated',
+            'target_type' => 'hostel_assignment',
+            'target_id' => $assignment->id,
+            'details' => json_encode([
+                'hostel_id' => $assignment->vuna_accomodation_id,
+                'hostel_name' => $assignment->hostel->name ?? 'Unknown',
+                'assigned_staff_id' => $assignment->staff_id,
+                'assigned_staff_name' => $assignment->staff->fname . ' ' . $assignment->staff->lname,
+                'status_changed_from' => $oldStatus,
+                'status_changed_to' => $validated['status']
+            ])
+        ]);
 
         Log::info('Hostel admin assignment updated', [
             'assignment_id' => $id,
@@ -180,10 +216,26 @@ class HostelAdminController extends Controller
     /**
      * Remove hostel admin assignment
      */
-    public function destroy($id)
+    public function destroy(Request $request, $id)
     {
         $assignment = HostelAdminAssignment::findOrFail($id);
         $assignment->update(['status' => 'inactive']);
+
+        // Create audit log for hostel assignment removal
+        AuditLog::create([
+            'staff_id' => $request->user()->id,
+            'student_id' => null,
+            'action' => 'hostel_assignment_removed',
+            'target_type' => 'hostel_assignment',
+            'target_id' => $assignment->id,
+            'details' => json_encode([
+                'hostel_id' => $assignment->vuna_accomodation_id,
+                'hostel_name' => $assignment->hostel->name ?? 'Unknown',
+                'assigned_staff_id' => $assignment->staff_id,
+                'assigned_staff_name' => $assignment->staff->fname . ' ' . $assignment->staff->lname,
+                'removed_by' => $request->user()->fname . ' ' . $request->user()->lname
+            ])
+        ]);
 
         Log::info('Hostel admin assignment deactivated', [
             'assignment_id' => $id,

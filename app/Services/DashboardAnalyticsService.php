@@ -828,4 +828,161 @@ class DashboardAnalyticsService
             })
             ->toArray();
     }
+
+    /**
+     * Get paginated audit trail for admin dashboard
+     */
+    public function getPaginatedAuditTrail(int $page = 1, int $perPage = 20, int $days = 30, ?string $action = null, ?string $targetType = null): array
+    {
+        $startDate = Carbon::now()->subDays($days);
+        
+        $query = AuditLog::with(['staff:id,fname,lname,email', 'student:id,fname,lname'])
+            ->where('created_at', '>=', $startDate);
+            
+        // Apply filters
+        if ($action) {
+            $query->where('action', $action);
+        }
+        
+        if ($targetType) {
+            $query->where('target_type', $targetType);
+        }
+        
+        $query->orderBy('created_at', 'desc');
+        
+        // Get paginated results
+        $paginatedLogs = $query->paginate($perPage, ['*'], 'page', $page);
+        
+        $auditLogs = $paginatedLogs->getCollection()->map(function ($log) {
+            return [
+                'id' => $log->id,
+                'action' => $this->sanitizeAction($log->action),
+                'target_type' => $log->target_type,
+                'target_id' => $log->target_id,
+                'actor' => $this->getActorInfo($log),
+                'timestamp' => $log->created_at->format('Y-m-d H:i:s'),
+                'details' => $this->sanitizeDetails($log->details),
+                'formatted_time' => $log->created_at->diffForHumans(),
+            ];
+        });
+
+        return [
+            'audit_logs' => $auditLogs,
+            'pagination' => [
+                'current_page' => $paginatedLogs->currentPage(),
+                'last_page' => $paginatedLogs->lastPage(),
+                'per_page' => $paginatedLogs->perPage(),
+                'total' => $paginatedLogs->total(),
+                'from' => $paginatedLogs->firstItem(),
+                'to' => $paginatedLogs->lastItem(),
+                'has_more_pages' => $paginatedLogs->hasMorePages(),
+            ],
+            'filters' => [
+                'days' => $days,
+                'action' => $action,
+                'target_type' => $targetType,
+            ],
+            'action_summary' => $this->getActionSummary($startDate),
+            'available_actions' => $this->getAvailableActions($startDate),
+            'available_target_types' => $this->getAvailableTargetTypes($startDate),
+        ];
+    }
+
+    /**
+     * Get paginated audit trail for dean dashboard
+     */
+    public function getPaginatedDeanAuditTrail(int $deanId, int $page = 1, int $perPage = 20, int $days = 30, ?string $action = null, ?string $targetType = null): array
+    {
+        $startDate = Carbon::now()->subDays($days);
+        
+        $query = AuditLog::with(['staff:id,fname,lname,email', 'student:id,fname,lname'])
+            ->where('created_at', '>=', $startDate);
+            
+        // Apply filters
+        if ($action) {
+            $query->where('action', $action);
+        }
+        
+        if ($targetType) {
+            $query->where('target_type', $targetType);
+        }
+        
+        $query->orderBy('created_at', 'desc');
+        
+        // Get paginated results
+        $paginatedLogs = $query->paginate($perPage, ['*'], 'page', $page);
+        
+        $auditLogs = $paginatedLogs->getCollection()->map(function ($log) {
+            return [
+                'id' => $log->id,
+                'action' => $this->sanitizeAction($log->action),
+                'target_type' => $log->target_type,
+                'target_id' => $log->target_id,
+                'actor' => $this->getActorInfo($log),
+                'timestamp' => $log->created_at->format('Y-m-d H:i:s'),
+                'details' => $this->sanitizeDetails($log->details),
+                'formatted_time' => $log->created_at->diffForHumans(),
+            ];
+        });
+
+        return [
+            'audit_logs' => $auditLogs,
+            'pagination' => [
+                'current_page' => $paginatedLogs->currentPage(),
+                'last_page' => $paginatedLogs->lastPage(),
+                'per_page' => $paginatedLogs->perPage(),
+                'total' => $paginatedLogs->total(),
+                'from' => $paginatedLogs->firstItem(),
+                'to' => $paginatedLogs->lastItem(),
+                'has_more_pages' => $paginatedLogs->hasMorePages(),
+            ],
+            'filters' => [
+                'days' => $days,
+                'action' => $action,
+                'target_type' => $targetType,
+            ],
+            'action_summary' => $this->getDepartmentActionSummary($deanId, $startDate),
+            'available_actions' => $this->getAvailableActions($startDate),
+            'available_target_types' => $this->getAvailableTargetTypes($startDate),
+        ];
+    }
+
+    /**
+     * Get available actions for filtering
+     */
+    private function getAvailableActions(Carbon $startDate): array
+    {
+        return AuditLog::select('action')
+            ->where('created_at', '>=', $startDate)
+            ->distinct()
+            ->orderBy('action')
+            ->pluck('action')
+            ->map(function ($action) {
+                return [
+                    'value' => $action,
+                    'label' => $this->sanitizeAction($action)
+                ];
+            })
+            ->toArray();
+    }
+
+    /**
+     * Get available target types for filtering
+     */
+    private function getAvailableTargetTypes(Carbon $startDate): array
+    {
+        return AuditLog::select('target_type')
+            ->where('created_at', '>=', $startDate)
+            ->distinct()
+            ->whereNotNull('target_type')
+            ->orderBy('target_type')
+            ->pluck('target_type')
+            ->map(function ($targetType) {
+                return [
+                    'value' => $targetType,
+                    'label' => ucwords(str_replace('_', ' ', $targetType))
+                ];
+            })
+            ->toArray();
+    }
 }

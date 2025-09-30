@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\StudentExeatDebt;
+use App\Models\AuditLog;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
@@ -75,6 +76,23 @@ class AdminStudentDebtController extends Controller
             'cleared_by_staff_id' => Auth::id(),
             'cleared_at' => now(),
             'clearance_notes' => 'Cleared by admin'
+        ]);
+
+        // Create audit log
+        AuditLog::create([
+            'staff_id' => Auth::id(),
+            'student_id' => $debt->student_id,
+            'action' => 'debt_cleared_by_admin',
+            'target_type' => 'student_exeat_debt',
+            'target_id' => $debt->id,
+            'details' => json_encode([
+                'cleared_by' => Auth::id(),
+                'cleared_at' => $debt->cleared_at,
+                'amount' => $debt->amount,
+                'clearance_notes' => 'Cleared by admin',
+                'exeat_request_id' => $debt->exeat_request_id
+            ]),
+            'timestamp' => now(),
         ]);
 
         return response()->json([

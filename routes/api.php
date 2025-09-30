@@ -390,6 +390,11 @@ Route::middleware('auth:sanctum')->group(function () {
 
         // Common dashboard widgets (accessible by all authenticated users)
         Route::get('/widgets', [DashboardController::class, 'getWidgets']);
+        
+        // Paginated audit trail routes
+        Route::get('/audit-trail', [DashboardController::class, 'getPaginatedAuditTrail']);
+        Route::get('/dean-audit-trail', [DashboardController::class, 'getPaginatedDeanAuditTrail'])
+            ->middleware('role:dean');
     });
 });
 

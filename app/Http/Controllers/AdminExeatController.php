@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use App\Models\ExeatRequest;
 use App\Models\ExeatCategory;
 use App\Models\AuditLog;
+use App\Models\StudentExeatDebt;
 use App\Services\ExeatNotificationService;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
@@ -171,9 +172,31 @@ class AdminExeatController extends Controller
                 'exeat_request_id' => $exeat->id
             ]);
             
+            $wasNewDebt = !$debt->exists;
+            $oldAmount = $debt->amount ?? 0;
+            
             $debt->amount = $debtAmount;
             $debt->payment_status = 'unpaid';
             $debt->save();
+            
+            // Create audit log for debt creation or update
+            AuditLog::create([
+                'staff_id' => Auth::id(),
+                'student_id' => $exeat->student_id,
+                'action' => $wasNewDebt ? 'debt_created_by_admin' : 'debt_updated_by_admin',
+                'target_type' => 'student_exeat_debt',
+                'target_id' => $debt->id,
+                'details' => json_encode([
+                    'exeat_request_id' => $exeat->id,
+                    'days_late' => $daysLate,
+                    'amount' => $debtAmount,
+                    'old_amount' => $oldAmount,
+                    'return_date' => $exeat->return_date,
+                    'actual_return_date' => $exeat->actual_return_date,
+                    'updated_by' => Auth::id()
+                ]),
+                'timestamp' => now(),
+            ]);
             
             // Log the debt calculation
             Log::info('Student exeat debt recalculated', [
@@ -184,6 +207,28 @@ class AdminExeatController extends Controller
             ]);
         } else {
             // If student returned on time, remove any existing debt
+            $deletedDebts = StudentExeatDebt::where('exeat_request_id', $exeat->id)->get();
+            
+            foreach ($deletedDebts as $deletedDebt) {
+                // Create audit log for debt removal
+                AuditLog::create([
+                    'staff_id' => Auth::id(),
+                    'student_id' => $exeat->student_id,
+                    'action' => 'debt_removed_by_admin',
+                    'target_type' => 'student_exeat_debt',
+                    'target_id' => $deletedDebt->id,
+                    'details' => json_encode([
+                        'exeat_request_id' => $exeat->id,
+                        'removed_amount' => $deletedDebt->amount,
+                        'reason' => 'Student returned on time after admin update',
+                        'return_date' => $exeat->return_date,
+                        'actual_return_date' => $exeat->actual_return_date,
+                        'removed_by' => Auth::id()
+                    ]),
+                    'timestamp' => now(),
+                ]);
+            }
+            
             StudentExeatDebt::where('exeat_request_id', $exeat->id)->delete();
         }
     }

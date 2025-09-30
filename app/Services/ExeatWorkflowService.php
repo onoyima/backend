@@ -875,6 +875,24 @@ EOT;
                     'payment_status' => 'unpaid',
                 ]);
                 
+                // Create audit log for debt creation
+                AuditLog::create([
+                    'staff_id' => null, // System-generated debt
+                    'student_id' => $exeatRequest->student_id,
+                    'action' => 'debt_created_for_late_return',
+                    'target_type' => 'student_exeat_debt',
+                    'target_id' => $debt->id,
+                    'details' => json_encode([
+                        'exeat_request_id' => $exeatRequest->id,
+                        'days_overdue' => $daysOverdue,
+                        'amount' => $debtAmount,
+                        'return_date' => $exeatRequest->return_date,
+                        'actual_return_time' => $actualReturnTime->toDateTimeString(),
+                        'created_by' => 'system'
+                    ]),
+                    'timestamp' => now(),
+                ]);
+                
                 // Send debt notification to student (email only, no SMS)
                 try {
                     $student = \App\Models\Student::find($exeatRequest->student_id);

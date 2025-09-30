@@ -178,4 +178,70 @@ class DashboardController extends Controller
             'data' => $data
         ]);
     }
+
+    /**
+     * Get paginated audit trail for admin users
+     */
+    public function getPaginatedAuditTrail(Request $request): JsonResponse
+    {
+        $timeframe = $request->get('timeframe', '30');
+        $page = $request->get('page', 1);
+        $perPage = $request->get('per_page', 15);
+        $action = $request->get('action');
+        $targetType = $request->get('target_type');
+        $staffId = $request->get('staff_id');
+        $studentId = $request->get('student_id');
+
+        $auditTrail = $this->analyticsService->getPaginatedAuditTrail(
+            $timeframe, 
+            $page, 
+            $perPage, 
+            $action, 
+            $targetType, 
+            $staffId, 
+            $studentId
+        );
+
+        return response()->json([
+            'success' => true,
+            'data' => $auditTrail,
+            'filters' => [
+                'available_actions' => $this->analyticsService->getAvailableActions(),
+                'available_target_types' => $this->analyticsService->getAvailableTargetTypes()
+            ]
+        ]);
+    }
+
+    /**
+     * Get paginated dean audit trail for dean users
+     */
+    public function getPaginatedDeanAuditTrail(Request $request): JsonResponse
+    {
+        $user = Auth::user();
+        $timeframe = $request->get('timeframe', '30');
+        $page = $request->get('page', 1);
+        $perPage = $request->get('per_page', 15);
+        $action = $request->get('action');
+        $targetType = $request->get('target_type');
+        $studentId = $request->get('student_id');
+
+        $auditTrail = $this->analyticsService->getPaginatedDeanAuditTrail(
+            $user->id,
+            $timeframe, 
+            $page, 
+            $perPage, 
+            $action, 
+            $targetType, 
+            $studentId
+        );
+
+        return response()->json([
+            'success' => true,
+            'data' => $auditTrail,
+            'filters' => [
+                'available_actions' => $this->analyticsService->getAvailableActions(),
+                'available_target_types' => $this->analyticsService->getAvailableTargetTypes()
+            ]
+        ]);
+    }
 }

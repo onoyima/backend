@@ -52,7 +52,7 @@ class Staff extends Authenticatable
     }
     public function assignedRoles()
     {
-        return $this->hasMany(StaffAssignedRole::class, 'staff_id');
+        return $this->hasMany(StaffExeatRole::class, 'staff_id');
     }
    
     public function positions()
