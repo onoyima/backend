@@ -293,6 +293,126 @@ class StudentExeatDebtController extends Controller
         $student = Student::find($debt->student_id);
 
         if (!$student) {
+            $frontendUrl = config('app.frontend_url') . '/payment/result?' . http_build_query([
+                'status' => 'error',
+                'message' => 'Student not found',
+                'debt_id' => $id
+            ]);
+            return redirect($frontendUrl);
+        }
+
+        // Get the reference from the request or use the one stored in the debt
+        $reference = $request->reference ?? $debt->payment_reference;
+
+        if (!$reference) {
+            $frontendUrl = config('app.frontend_url') . '/payment/result?' . http_build_query([
+                'status' => 'error',
+                'message' => 'Payment reference not found',
+                'debt_id' => $id
+            ]);
+            return redirect($frontendUrl);
+        }
+
+        // Verify the transaction with Paystack
+        $result = $this->paystackService->verifyTransaction($reference);
+
+        if (!$result['success']) {
+            $frontendUrl = config('app.frontend_url') . '/payment/result?' . http_build_query([
+                'status' => 'error',
+                'message' => $result['message'],
+                'debt_id' => $id,
+                'reference' => $reference
+            ]);
+            return redirect($frontendUrl);
+        }
+
+        // Transaction was successful, update the debt record
+        DB::beginTransaction();
+        
+        try {
+            $debt->payment_status = 'cleared'; // Mark as cleared immediately
+            $debt->payment_date = now();
+            $debt->cleared_at = now();
+            $debt->payment_reference = $reference;
+            $debt->save();
+
+            // Create audit log
+            AuditLog::create([
+                'staff_id' => null,
+                'student_id' => $debt->student_id,
+                'action' => 'payment_verified_and_cleared',
+                'target_type' => 'student_exeat_debt',
+                'target_id' => $debt->id,
+                'details' => json_encode([
+                    'payment_reference' => $reference,
+                    'payment_date' => $debt->payment_date,
+                    'amount' => $debt->amount,
+                    'payment_method' => 'paystack',
+                    'transaction_data' => $result['data']
+                ]),
+                'timestamp' => now(),
+            ]);
+            
+            // Send notification to student when debt is cleared
+            try {
+                if ($debt->exeatRequest) {
+                    $this->notificationService->sendDebtClearanceNotification($student, $debt->exeatRequest);
+                }
+            } catch (\Exception $e) {
+                // Log error but don't fail the request
+                Log::error('Failed to send debt clearance notification', [
+                    'debt_id' => $debt->id,
+                    'student_id' => $debt->student_id,
+                    'error' => $e->getMessage()
+                ]);
+            }
+
+            DB::commit();
+
+            $frontendUrl = config('app.frontend_url') . '/payment/result?' . http_build_query([
+                'status' => 'success',
+                'message' => 'Payment verified and debt cleared successfully',
+                'debt_id' => $debt->id,
+                'reference' => $reference,
+                'amount' => $debt->amount,
+                'payment_date' => $debt->payment_date->toISOString()
+            ]);
+            return redirect($frontendUrl);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            
+            Log::error('Failed to update debt after payment verification', [
+                'debt_id' => $debt->id,
+                'student_id' => $debt->student_id,
+                'reference' => $reference,
+                'error' => $e->getMessage()
+            ]);
+
+            $frontendUrl = config('app.frontend_url') . '/payment/result?' . http_build_query([
+                'status' => 'error',
+                'message' => 'An error occurred while processing your payment verification. Please contact support.',
+                'debt_id' => $debt->id,
+                'reference' => $reference
+            ]);
+            return redirect($frontendUrl);
+        }
+    }
+
+    /**
+     * Verify payment status via API (returns JSON for programmatic access)
+     * 
+     * @param Request $request
+     * @param int $id
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function verifyPaymentApi(Request $request, $id)
+    {
+        $debt = StudentExeatDebt::findOrFail($id);
+        
+        // Get the student from the debt record (no authentication required for callback)
+        $student = Student::find($debt->student_id);
+
+        if (!$student) {
             return response()->json([
                 'status' => 'error',
                 'message' => 'Student not found'

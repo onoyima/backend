@@ -67,6 +67,18 @@ Route::get('/parent/consent/{token}/decline', function($token) {
 // Public payment verification route (no auth required for Paystack callback)
 Route::get('student/debts/{id}/verify-payment', [StudentExeatDebtController::class, 'verifyPayment'])->name('student.debts.verify-payment');
 
+// Public API payment verification route (returns JSON for programmatic access)
+Route::get('student/debts/{id}/verify-payment-api', [StudentExeatDebtController::class, 'verifyPaymentApi'])->name('student.debts.verify-payment-api');
+
+// Test redirect route
+Route::get('test-redirect', function() {
+    $frontendUrl = config('app.frontend_url') . '/payment/result?' . http_build_query([
+        'status' => 'test',
+        'message' => 'This is a test redirect'
+    ]);
+    return redirect($frontendUrl);
+});
+
 // Protected routes
 Route::middleware('auth:sanctum')->group(function () {
     // User profile

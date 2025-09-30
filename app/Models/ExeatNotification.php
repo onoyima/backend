@@ -73,6 +73,7 @@ class ExeatNotification extends Model
     const RECIPIENT_STUDENT = 'student';
     const RECIPIENT_STAFF = 'staff';
     const RECIPIENT_ADMIN = 'admin';
+    const RECIPIENT_PARENT = 'parent';
 
     // Priority levels
     const PRIORITY_LOW = 'low';
