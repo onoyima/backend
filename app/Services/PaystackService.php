@@ -27,9 +27,10 @@ class PaystackService
      *
      * @param StudentExeatDebt $debt
      * @param Student $student
+     * @param string $callbackUrl
      * @return array
      */
-    public function initializeTransaction(StudentExeatDebt $debt, Student $student)
+    public function initializeTransaction(StudentExeatDebt $debt, Student $student, $callbackUrl = null)
     {
         try {
             // Use total amount with charge if available, otherwise use original amount
@@ -45,7 +46,7 @@ class PaystackService
                 'amount' => $amount,
                 'email' => $student->email,
                 'reference' => $reference,
-                'callback_url' => route('student.debts.verify-payment', ['id' => $debt->id]),
+                'callback_url' => $callbackUrl ?: route('student.debts.verify-payment', ['id' => $debt->id]),
                 'metadata' => [
                     'debt_id' => $debt->id,
                     'student_id' => $student->id,

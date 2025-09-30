@@ -104,6 +104,7 @@ class StudentExeatDebtController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'payment_method' => 'required|string|in:paystack',
+            'callback_url' => 'required|url',
         ]);
 
         if ($validator->fails()) {
@@ -146,8 +147,8 @@ class StudentExeatDebtController extends Controller
             \Log::info('Processing charge columns not available yet: ' . $e->getMessage());
         }
 
-        // Initialize Paystack transaction with the debt model and student
-        $result = $this->paystackService->initializeTransaction($debt, $student);
+        // Initialize Paystack transaction with the debt model, student, and callback URL
+        $result = $this->paystackService->initializeTransaction($debt, $student, $request->callback_url);
         
         if (!$result['success']) {
             return response()->json([
