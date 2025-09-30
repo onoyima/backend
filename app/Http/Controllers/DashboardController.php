@@ -29,13 +29,22 @@ class DashboardController extends Controller
             'exeat_statistics' => $this->analyticsService->getExeatStatistics($timeframe),
             'user_analytics' => $this->analyticsService->getUserAnalytics($timeframe),
             'performance_metrics' => $this->analyticsService->getPerformanceMetrics($timeframe),
+            'debt_analytics' => $this->analyticsService->getDebtAnalytics($timeframe),
             'audit_trail' => $this->analyticsService->getAuditTrail($timeframe, 50),
             'audit_statistics' => $this->analyticsService->getAuditStatistics($timeframe),
             'charts' => [
                 'exeat_trends' => $this->analyticsService->getExeatTrendsChart($timeframe),
                 'status_distribution' => $this->analyticsService->getStatusDistributionChart($timeframe),
                 'user_activity' => $this->analyticsService->getUserActivityChart($timeframe),
-                'approval_rates' => $this->analyticsService->getApprovalRatesChart($timeframe)
+                'approval_rates' => $this->analyticsService->getApprovalRatesChart($timeframe),
+                'debt_trends' => $this->analyticsService->getDebtTrendsChart($timeframe),
+                'payment_methods' => $this->analyticsService->getPaymentMethodsStats($timeframe),
+                'debt_aging' => $this->analyticsService->getDebtAgingAnalysis()
+            ],
+            'debt_summary' => [
+                'top_debtors' => $this->analyticsService->getTopDebtors(10),
+                'monthly_summary' => $this->analyticsService->getMonthlyDebtSummary(),
+                'clearance_stats' => $this->analyticsService->getDebtClearanceStats($timeframe)
             ],
             'recent_activities' => $this->analyticsService->getRecentActivities(10)
         ];
@@ -59,11 +68,18 @@ class DashboardController extends Controller
             'department_statistics' => $this->analyticsService->getDepartmentStatistics($user->id, $timeframe),
             'pending_approvals' => $this->analyticsService->getPendingApprovals($user->id),
             'student_analytics' => $this->analyticsService->getStudentAnalytics($user->id, $timeframe),
+            'debt_analytics' => $this->analyticsService->getDebtAnalytics($timeframe),
             'audit_trail' => $this->analyticsService->getDeanAuditTrail($user->id, $timeframe, 30),
             'charts' => [
                 'department_trends' => $this->analyticsService->getDepartmentTrendsChart($user->id, $timeframe),
                 'approval_timeline' => $this->analyticsService->getApprovalTimelineChart($user->id, $timeframe),
-                'student_activity' => $this->analyticsService->getStudentActivityChart($user->id, $timeframe)
+                'student_activity' => $this->analyticsService->getStudentActivityChart($user->id, $timeframe),
+                'debt_trends' => $this->analyticsService->getDebtTrendsChart($timeframe),
+                'payment_methods' => $this->analyticsService->getPaymentMethodsStats($timeframe)
+            ],
+            'debt_summary' => [
+                'top_debtors' => $this->analyticsService->getTopDebtors(5),
+                'clearance_stats' => $this->analyticsService->getDebtClearanceStats($timeframe)
             ],
             'recent_requests' => $this->analyticsService->getRecentDepartmentRequests($user->id, 15)
         ];

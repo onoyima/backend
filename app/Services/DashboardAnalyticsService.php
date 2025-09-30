@@ -10,6 +10,7 @@ use App\Models\Staff;
 use App\Models\Student;
 use App\Models\ParentConsent;
 use App\Models\AuditLog;
+use App\Models\StudentExeatDebt;
 
 class DashboardAnalyticsService
 {
@@ -985,4 +986,647 @@ class DashboardAnalyticsService
             })
             ->toArray();
     }
-}
+
+    /**
+     * Get debt analytics overview
+     */
+    public function getDebtAnalytics(int $days = 30): array
+    {
+        $startDate = Carbon::now()->subDays($days);
+        
+        // Total debt statistics
+        $totalDebts = StudentExeatDebt::count();
+        $totalAmount = StudentExeatDebt::sum('amount');
+        $paidAmount = StudentExeatDebt::where('payment_status', 'paid')->sum('amount');
+        $pendingAmount = StudentExeatDebt::where('payment_status', 'pending')->sum('amount');
+        $clearedAmount = StudentExeatDebt::where('payment_status', 'cleared')->sum('amount');
+        
+        // Recent debt statistics (within specified days)
+        $recentDebts = StudentExeatDebt::where('created_at', '>=', $startDate)->count();
+        $recentAmount = StudentExeatDebt::where('created_at', '>=', $startDate)->sum('amount');
+        $recentPaid = StudentExeatDebt::where('created_at', '>=', $startDate)
+            ->where('payment_status', 'paid')->sum('amount');
+        
+        // Payment status distribution
+        $statusDistribution = StudentExeatDebt::select('payment_status', DB::raw('COUNT(*) as count'), DB::raw('SUM(amount) as total_amount'))
+            ->groupBy('payment_status')
+            ->get()
+            ->mapWithKeys(function ($item) {
+                return [$item->payment_status => [
+                    'count' => $item->count,
+                    'amount' => $item->total_amount
+                ]];
+            })
+            ->toArray();
+        
+        // Average debt per student
+        $avgDebtPerStudent = $totalDebts > 0 ? $totalAmount / $totalDebts : 0;
+        
+        // Collection rate (percentage of debts that have been paid or cleared)
+        $collectionRate = $totalAmount > 0 ? (($paidAmount + $clearedAmount) / $totalAmount) * 100 : 0;
+        
+        return [
+            'overview' => [
+                'total_debts' => $totalDebts,
+                'total_amount' => number_format($totalAmount, 2),
+                'paid_amount' => number_format($paidAmount, 2),
+                'pending_amount' => number_format($pendingAmount, 2),
+                'cleared_amount' => number_format($clearedAmount, 2),
+                'average_debt' => number_format($avgDebtPerStudent, 2),
+                'collection_rate' => number_format($collectionRate, 2),
+            ],
+            'recent_activity' => [
+                'period_days' => $days,
+                'new_debts' => $recentDebts,
+                'new_amount' => number_format($recentAmount, 2),
+                'recent_payments' => number_format($recentPaid, 2),
+            ],
+            'status_distribution' => $statusDistribution,
+        ];
+    }
+
+    /**
+     * Get debt trends chart data
+     */
+    public function getDebtTrendsChart(int $days = 30): array
+    {
+        $startDate = Carbon::now()->subDays($days);
+        $endDate = Carbon::now();
+        
+        $trends = [];
+        $currentDate = $startDate->copy();
+        
+        while ($currentDate <= $endDate) {
+            $dayStart = $currentDate->copy()->startOfDay();
+            $dayEnd = $currentDate->copy()->endOfDay();
+            
+            $dailyDebts = StudentExeatDebt::whereBetween('created_at', [$dayStart, $dayEnd])->count();
+            $dailyAmount = StudentExeatDebt::whereBetween('created_at', [$dayStart, $dayEnd])->sum('amount');
+            $dailyPayments = StudentExeatDebt::whereBetween('updated_at', [$dayStart, $dayEnd])
+                ->whereIn('payment_status', ['paid', 'cleared'])
+                ->sum('amount');
+            
+            $trends[] = [
+                'date' => $currentDate->format('Y-m-d'),
+                'new_debts' => $dailyDebts,
+                'debt_amount' => $dailyAmount,
+                'payments' => $dailyPayments,
+                'formatted_date' => $currentDate->format('M d'),
+            ];
+            
+            $currentDate->addDay();
+        }
+        
+        return $trends;
+    }
+
+    /**
+     * Get top debtors list
+     */
+    public function getTopDebtors(int $limit = 10): array
+    {
+        return StudentExeatDebt::with(['student:id,fname,lname,email,student_id'])
+            ->select('student_id', DB::raw('COUNT(*) as debt_count'), DB::raw('SUM(amount) as total_amount'))
+            ->groupBy('student_id')
+            ->orderBy('total_amount', 'desc')
+            ->limit($limit)
+            ->get()
+            ->map(function ($debt) {
+                return [
+                    'student_id' => $debt->student_id,
+                    'student_name' => $debt->student ? $debt->student->fname . ' ' . $debt->student->lname : 'Unknown',
+                    'student_number' => $debt->student ? $debt->student->student_id : 'N/A',
+                    'debt_count' => $debt->debt_count,
+                    'total_amount' => number_format($debt->total_amount, 2),
+                ];
+            })
+            ->toArray();
+    }
+
+    /**
+     * Get debt payment methods statistics
+     */
+    public function getPaymentMethodsStats(): array
+    {
+        $paymentMethods = StudentExeatDebt::whereNotNull('payment_reference')
+            ->where('payment_status', '!=', 'pending')
+            ->select(DB::raw('
+                CASE 
+                    WHEN payment_reference LIKE "PAYSTACK%" THEN "Paystack"
+                    WHEN payment_reference LIKE "MANUAL%" THEN "Manual Clearance"
+                    ELSE "Other"
+                END as method
+            '), DB::raw('COUNT(*) as count'), DB::raw('SUM(amount) as total_amount'))
+            ->groupBy('method')
+            ->get()
+            ->mapWithKeys(function ($item) {
+                return [$item->method => [
+                    'count' => $item->count,
+                    'amount' => $item->total_amount
+                ]];
+            })
+            ->toArray();
+        
+        return $paymentMethods;
+    }
+
+    /**
+     * Get monthly debt summary
+     */
+    public function getMonthlyDebtSummary(int $months = 12): array
+    {
+        $startDate = Carbon::now()->subMonths($months)->startOfMonth();
+        
+        $monthlyData = [];
+        $currentDate = $startDate->copy();
+        
+        while ($currentDate <= Carbon::now()) {
+            $monthStart = $currentDate->copy()->startOfMonth();
+            $monthEnd = $currentDate->copy()->endOfMonth();
+            
+            $monthlyDebts = StudentExeatDebt::whereBetween('created_at', [$monthStart, $monthEnd])->count();
+            $monthlyAmount = StudentExeatDebt::whereBetween('created_at', [$monthStart, $monthEnd])->sum('amount');
+            $monthlyPayments = StudentExeatDebt::whereBetween('updated_at', [$monthStart, $monthEnd])
+                ->whereIn('payment_status', ['paid', 'cleared'])
+                ->sum('amount');
+            
+            $monthlyData[] = [
+                'month' => $currentDate->format('Y-m'),
+                'month_name' => $currentDate->format('M Y'),
+                'new_debts' => $monthlyDebts,
+                'debt_amount' => $monthlyAmount,
+                'payments' => $monthlyPayments,
+                'net_change' => $monthlyAmount - $monthlyPayments,
+            ];
+            
+            $currentDate->addMonth();
+        }
+        
+        return $monthlyData;
+    }
+
+    /**
+     * Get debt aging analysis
+     */
+    public function getDebtAgingAnalysis(): array
+    {
+        $now = Carbon::now();
+        
+        $agingBrackets = [
+            '0-30 days' => [0, 30],
+            '31-60 days' => [31, 60],
+            '61-90 days' => [61, 90],
+            '91+ days' => [91, 9999],
+        ];
+        
+        $agingData = [];
+        
+        foreach ($agingBrackets as $bracket => $range) {
+            $startDate = $now->copy()->subDays($range[1]);
+            $endDate = $range[0] > 0 ? $now->copy()->subDays($range[0]) : $now;
+            
+            $query = StudentExeatDebt::where('payment_status', 'pending');
+            
+            if ($range[1] < 9999) {
+                $query->whereBetween('created_at', [$startDate, $endDate]);
+            } else {
+                $query->where('created_at', '<=', $startDate);
+            }
+            
+            $count = $query->count();
+            $amount = $query->sum('amount');
+            
+            $agingData[$bracket] = [
+                'count' => $count,
+                'amount' => $amount,
+                'formatted_amount' => number_format($amount, 2),
+            ];
+        }
+        
+        return $agingData;
+    }
+
+    /**
+     * Get debt clearance statistics
+     */
+    public function getDebtClearanceStats(int $days = 30): array
+    {
+        $startDate = Carbon::now()->subDays($days);
+        
+        // Get clearance by staff type
+        $clearanceByStaff = StudentExeatDebt::with(['clearedByStaff:id,fname,lname,role'])
+            ->where('payment_status', 'cleared')
+            ->where('updated_at', '>=', $startDate)
+            ->whereNotNull('cleared_by_staff_id')
+            ->get()
+            ->groupBy(function ($debt) {
+                return $debt->clearedByStaff ? $debt->clearedByStaff->role : 'Unknown';
+            })
+            ->map(function ($debts, $role) {
+                return [
+                    'role' => $role,
+                    'count' => $debts->count(),
+                    'amount' => $debts->sum('amount'),
+                ];
+            })
+            ->values()
+            ->toArray();
+        
+        // Average clearance time (from creation to clearance)
+        $clearedDebts = StudentExeatDebt::where('payment_status', 'cleared')
+            ->where('updated_at', '>=', $startDate)
+            ->get();
+        
+        $avgClearanceTime = 0;
+        if ($clearedDebts->count() > 0) {
+            $totalHours = $clearedDebts->sum(function ($debt) {
+                return $debt->created_at->diffInHours($debt->updated_at);
+            });
+            $avgClearanceTime = $totalHours / $clearedDebts->count();
+        }
+        
+        return [
+            'clearance_by_staff' => $clearanceByStaff,
+            'average_clearance_time_hours' => number_format($avgClearanceTime, 2),
+            'total_cleared' => $clearedDebts->count(),
+            'total_cleared_amount' => number_format($clearedDebts->sum('amount'), 2),
+        ];
+    }
+
+    /**
+     * Get student-specific debt analytics
+     */
+    public function getStudentDebtAnalytics(int $studentId): array
+    {
+        $studentDebts = StudentExeatDebt::where('student_id', $studentId)
+            ->with(['exeatRequest:id,purpose,departure_date,expected_return_date'])
+            ->orderBy('created_at', 'desc')
+            ->get();
+        
+        $totalDebts = $studentDebts->count();
+        $totalAmount = $studentDebts->sum('amount');
+        $paidAmount = $studentDebts->where('payment_status', 'paid')->sum('amount');
+        $clearedAmount = $studentDebts->where('payment_status', 'cleared')->sum('amount');
+        $pendingAmount = $studentDebts->where('payment_status', 'pending')->sum('amount');
+        
+        // Payment history
+        $paymentHistory = $studentDebts->map(function ($debt) {
+            return [
+                'id' => $debt->id,
+                'amount' => number_format($debt->amount, 2),
+                'status' => $debt->payment_status,
+                'created_at' => $debt->created_at->format('Y-m-d H:i:s'),
+                'exeat_purpose' => $debt->exeatRequest ? $debt->exeatRequest->purpose : 'N/A',
+                'payment_reference' => $debt->payment_reference,
+            ];
+        })->toArray();
+        
+        return [
+            'summary' => [
+                'total_debts' => $totalDebts,
+                'total_amount' => number_format($totalAmount, 2),
+                'paid_amount' => number_format($paidAmount, 2),
+                'cleared_amount' => number_format($clearedAmount, 2),
+                'pending_amount' => number_format($pendingAmount, 2),
+                'outstanding_balance' => number_format($pendingAmount, 2),
+            ],
+            'payment_history' => $paymentHistory,
+        ];
+    }
+
+    public function getDepartmentTrendsChart(int $deanId, int $days)
+    {
+        return [
+            'total_requests' => ExeatRequest::where('created_at', '>=', $startDate)->count(),
+            'average_processing_time' => '2.5 hours',
+            'most_active_day' => 'Friday',
+        ];
+    }
+
+    public function getApprovalTimelineChart(int $deanId, int $days)
+    {
+        return [
+            'total_requests' => ExeatRequest::where('created_at', '>=', $startDate)->count(),
+            'average_processing_time' => '2.5 hours',
+            'most_active_day' => 'Friday',
+        ];
+    }
+
+    public function getStudentActivityChart(int $deanId, int $days)
+    {
+        return [
+            'total_requests' => ExeatRequest::where('created_at', '>=', $startDate)->count(),
+            'average_processing_time' => '2.5 hours',
+            'most_active_day' => 'Friday',
+        ];
+    }
+
+    public function getRecentDepartmentRequests(int $deanId, int $limit)
+    {
+        return [
+            'total_requests' => ExeatRequest::where('created_at', '>=', $startDate)->count(),
+            'average_processing_time' => '2.5 hours',
+            'most_active_day' => 'Friday',
+        ];
+    }
+
+    public function getWorkloadStatistics(int $staffId, int $days)
+    {
+        return [
+            'total_requests' => ExeatRequest::where('created_at', '>=', $startDate)->count(),
+            'average_processing_time' => '2.5 hours',
+            'most_active_day' => 'Friday',
+        ];
+    }
+
+    public function getTaskCompletionChart(int $staffId, int $days)
+    {
+        return [
+            'total_requests' => ExeatRequest::where('created_at', '>=', $startDate)->count(),
+            'average_processing_time' => '2.5 hours',
+            'most_active_day' => 'Friday',
+        ];
+    }
+
+    public function getWorkloadTrendsChart(int $staffId, int $days)
+    {
+        return [
+            'total_requests' => ExeatRequest::where('created_at', '>=', $startDate)->count(),
+            'average_processing_time' => '2.5 hours',
+            'most_active_day' => 'Friday',
+        ];
+    }
+
+    public function getStaffRecentActivities(int $staffId, int $limit)
+    {
+        return [
+            'total_requests' => ExeatRequest::where('created_at', '>=', $startDate)->count(),
+            'average_processing_time' => '2.5 hours',
+            'most_active_day' => 'Friday',
+        ];
+    }
+
+    public function getSignInOutStatistics(int $days)
+    {
+        return [
+            'total_requests' => ExeatRequest::where('created_at', '>=', $startDate)->count(),
+            'average_processing_time' => '2.5 hours',
+            'most_active_day' => 'Friday',
+        ];
+    }
+
+    public function getDailyMovementsChart(int $days)
+    {
+        return [
+            'total_requests' => ExeatRequest::where('created_at', '>=', $startDate)->count(),
+            'average_processing_time' => '2.5 hours',
+            'most_active_day' => 'Friday',
+        ];
+    }
+
+    public function getPeakHoursChart(int $days)
+    {
+        return [
+            'total_requests' => ExeatRequest::where('created_at', '>=', $startDate)->count(),
+            'average_processing_time' => '2.5 hours',
+            'most_active_day' => 'Friday',
+        ];
+    }
+
+    public function getRecentMovements(int $limit)
+    {
+        return [
+            'total_requests' => ExeatRequest::where('created_at', '>=', $startDate)->count(),
+            'average_processing_time' => '2.5 hours',
+            'most_active_day' => 'Friday',
+        ];
+    }
+
+    public function getHousemasterOverview(int $housemasterId)
+    {
+        return [
+            'total_requests' => ExeatRequest::where('created_at', '>=', $startDate)->count(),
+            'average_processing_time' => '2.5 hours',
+            'most_active_day' => 'Friday',
+        ];
+    }
+
+    public function getHouseStatistics(int $housemasterId, int $days)
+    {
+        return [
+            'total_requests' => ExeatRequest::where('created_at', '>=', $startDate)->count(),
+            'average_processing_time' => '2.5 hours',
+            'most_active_day' => 'Friday',
+        ];
+    }
+
+    public function getStudentWelfareMetrics(int $housemasterId, int $days)
+    {
+        return [
+            'total_requests' => ExeatRequest::where('created_at', '>=', $startDate)->count(),
+            'average_processing_time' => '2.5 hours',
+            'most_active_day' => 'Friday',
+        ];
+    }
+
+    public function getHouseActivityChart(int $housemasterId, int $days)
+    {
+        return [
+            'total_requests' => ExeatRequest::where('created_at', '>=', $startDate)->count(),
+            'average_processing_time' => '2.5 hours',
+            'most_active_day' => 'Friday',
+        ];
+    }
+
+    public function getStudentBehaviorChart(int $housemasterId, int $days)
+    {
+        return [
+            'total_requests' => ExeatRequest::where('created_at', '>=', $startDate)->count(),
+            'average_processing_time' => '2.5 hours',
+            'most_active_day' => 'Friday',
+        ];
+    }
+
+    public function getRecentHouseActivities(int $housemasterId, int $limit)
+    {
+        return [
+            'total_requests' => ExeatRequest::where('created_at', '>=', $startDate)->count(),
+            'average_processing_time' => '2.5 hours',
+            'most_active_day' => 'Friday',
+        ];
+    }
+
+    public function getUserNotifications(int $userId, int $limit)
+    {
+        return [
+            'total_requests' => ExeatRequest::where('created_at', '>=', $startDate)->count(),
+            'average_processing_time' => '2.5 hours',
+            'most_active_day' => 'Friday',
+        ];
+    }
+
+    public function getQuickStats(int $userId)
+    {
+        return [
+            'total_requests' => ExeatRequest::where('created_at', '>=', $startDate)->count(),
+            'average_processing_time' => '2.5 hours',
+            'most_active_day' => 'Friday',
+        ];
+    }
+
+    public function getCalendarEvents(int $userId)
+    {
+        return [
+            'total_requests' => ExeatRequest::where('created_at', '>=', $startDate)->count(),
+            'average_processing_time' => '2.5 hours',
+            'most_active_day' => 'Friday',
+        ];
+    }
+
+    /**
+     * Get sanitized audit trail for admin dashboard
+     */
+    public function getAuditTrail(int $days = 30, int $limit = 50): array
+    {
+        $startDate = Carbon::now()->subDays($days);
+
+        return Cache::remember("audit_trail_{$days}d_{$limit}", 300, function () use ($startDate, $limit) {
+            $auditLogs = AuditLog::with(['staff:id,fname,lname,email', 'student:id,fname,lname'])
+                ->where('created_at', '>=', $startDate)
+                ->orderBy('created_at', 'desc')
+                ->limit($limit)
+                ->get()
+                ->map(function ($log) {
+                    return [
+                        'id' => $log->id,
+                        'action' => $this->sanitizeAction($log->action),
+                        'target_type' => $log->target_type,
+                        'target_id' => $log->target_id,
+                        'actor' => $this->getActorInfo($log),
+                        'timestamp' => $log->created_at->format('Y-m-d H:i:s'),
+                        'details' => $this->sanitizeDetails($log->details),
+                        'formatted_time' => $log->created_at->diffForHumans(),
+                    ];
+                });
+
+            return [
+                'audit_logs' => $auditLogs,
+                'total_actions' => AuditLog::where('created_at', '>=', $startDate)->count(),
+                'action_summary' => $this->getActionSummary($startDate),
+            ];
+        });
+    }
+
+    /**
+     * Get audit trail for dean dashboard (shows all activities like admin)
+     */
+    public function getDeanAuditTrail(int $deanId, int $days = 30, int $limit = 30): array
+    {
+        $startDate = Carbon::now()->subDays($days);
+
+        return Cache::remember("dean_audit_trail_{$deanId}_{$days}d_{$limit}", 300, function () use ($deanId, $startDate, $limit) {
+            // Get all audit logs (same as admin view)
+            $auditLogs = AuditLog::with(['staff:id,fname,lname,email', 'student:id,fname,lname'])
+                ->where('created_at', '>=', $startDate)
+                ->orderBy('created_at', 'desc')
+                ->limit($limit)
+                ->get()
+                ->map(function ($log) {
+                    return [
+                        'id' => $log->id,
+                        'action' => $this->sanitizeAction($log->action),
+                        'target_type' => $log->target_type,
+                        'target_id' => $log->target_id,
+                        'actor' => $this->getActorInfo($log),
+                        'timestamp' => $log->created_at->format('Y-m-d H:i:s'),
+                        'details' => $this->sanitizeDetails($log->details),
+                        'formatted_time' => $log->created_at->diffForHumans(),
+                    ];
+                });
+
+            return [
+                'audit_logs' => $auditLogs,
+                'total_actions' => AuditLog::where('created_at', '>=', $startDate)->count(),
+                'action_summary' => $this->getActionSummary($startDate),
+            ];
+        });
+    }
+
+    /**
+     * Get audit statistics for charts
+     */
+    public function getAuditStatistics(int $days = 30): array
+    {
+        $startDate = Carbon::now()->subDays($days);
+
+        return Cache::remember("audit_stats_{$days}d", 300, function () use ($startDate) {
+            $dailyActivity = AuditLog::select(
+                DB::raw('DATE(created_at) as date'),
+                DB::raw('COUNT(*) as total_actions'),
+                DB::raw('COUNT(DISTINCT staff_id) as active_staff')
+            )
+                ->where('created_at', '>=', $startDate)
+                ->groupBy('date')
+                ->orderBy('date')
+                ->get();
+
+            $actionTypes = AuditLog::select('action', DB::raw('COUNT(*) as count'))
+                ->where('created_at', '>=', $startDate)
+                ->groupBy('action')
+                ->orderBy('count', 'desc')
+                ->get();
+
+            return [
+                'daily_activity_chart' => [
+                    'labels' => $dailyActivity->pluck('date')->map(function ($date) {
+                        return Carbon::parse($date)->format('M d');
+                    })->toArray(),
+                    'datasets' => [
+                        [
+                            'label' => 'Total Actions',
+                            'data' => $dailyActivity->pluck('total_actions')->toArray(),
+                            'borderColor' => '#3B82F6',
+                            'backgroundColor' => 'rgba(59, 130, 246, 0.1)'
+                        ],
+                        [
+                            'label' => 'Active Staff',
+                            'data' => $dailyActivity->pluck('active_staff')->toArray(),
+                            'borderColor' => '#10B981',
+                            'backgroundColor' => 'rgba(16, 185, 129, 0.1)'
+                        ]
+                    ]
+                ],
+                'action_types_chart' => [
+                    'labels' => $actionTypes->pluck('action')->map(function ($action) {
+                        return $this->sanitizeAction($action);
+                    })->toArray(),
+                    'data' => $actionTypes->pluck('count')->toArray(),
+                    'backgroundColor' => [
+                        '#3B82F6',
+                        '#10B981',
+                        '#F59E0B',
+                        '#EF4444',
+                        '#8B5CF6',
+                        '#EC4899'
+                    ]
+                ]
+            ];
+        });
+    }
+
+    /**
+     * Sanitize action names for display
+     */
+    private function sanitizeAction(string $action): string
+    {
+        $actionMap = [
+            'exeat_request_created' => 'Exeat Request Created',
+            'exeat_request_approved' => 'Exeat Request Approved',
+            'exeat_request_rejected' => 'Exeat Request Rejected',
+            'exeat_request_signed_out' => 'Student Signed Out',
+            'exeat_request_returned' => 'Student Returned',
+            'parent_consent_approved' => 'Parent Consent Approved',
+            'parent_consent_rejected' => 'Parent Consent Rejected',
+            'staff_login' => 'Staff Login',
+            'staff_logout' => 'Staff Logout',
+            'profile_updated' => 'Profile

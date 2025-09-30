@@ -141,7 +141,7 @@ class AdminStaffController extends Controller
         ]);
 
         // Refresh staff data with updated roles to prevent frontend caching issues
-        $staff->load(['exeatRoles.role']);
+        $staff->load(['exeatRoles.role', 'assignedRoles.role']);
         
         // Get role information for audit log
         $role = \App\Models\ExeatRole::find($validated['exeat_role_id']);
@@ -210,7 +210,7 @@ class AdminStaffController extends Controller
         $role->delete();
 
         // Refresh staff data with updated roles to prevent frontend caching issues
-        $staff->load(['exeatRoles.role']);
+        $staff->load(['exeatRoles.role', 'assignedRoles.role']);
         
         return response()->json([
             'message' => 'Exeat role unassigned from staff.',
