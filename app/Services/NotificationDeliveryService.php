@@ -30,8 +30,8 @@ class NotificationDeliveryService
      */
     public function queueNotificationDelivery(ExeatNotification $notification): void
     {
-        // Always use email and in-app delivery methods
-        $deliveryMethods = ['email', 'in_app'];
+        // Get delivery methods based on notification type and requirements
+        $deliveryMethods = $this->getDeliveryMethodsForNotification($notification);
         
         foreach ($deliveryMethods as $method) {
             // Check if delivery is allowed based on quiet hours
@@ -52,8 +52,8 @@ class NotificationDeliveryService
     public function deliverNotificationSync(ExeatNotification $notification): array
     {
         $results = [];
-        // Always use email and in-app delivery methods
-        $deliveryMethods = ['email', 'in_app'];
+        // Get delivery methods based on notification type and requirements
+        $deliveryMethods = $this->getDeliveryMethodsForNotification($notification);
         
         foreach ($deliveryMethods as $method) {
             // Check if delivery is allowed based on quiet hours
@@ -68,6 +68,109 @@ class NotificationDeliveryService
         }
         
         return $results;
+    }
+
+    /**
+     * Determine which delivery methods to use based on notification type and requirements.
+     */
+    protected function getDeliveryMethodsForNotification(ExeatNotification $notification): array
+    {
+        $methods = ['in_app']; // Always include in-app notifications
+        
+        // Get the exeat request and student
+        $exeatRequest = $notification->exeatRequest;
+        $student = $exeatRequest ? $exeatRequest->student : null;
+        
+        switch ($notification->notification_type) {
+            case ExeatNotification::TYPE_REQUEST_SUBMITTED:
+                // Student emails only for exeat creation
+                if ($notification->recipient_type === ExeatNotification::RECIPIENT_STUDENT) {
+                    $methods[] = 'email';
+                }
+                break;
+                
+            case ExeatNotification::TYPE_STAGE_CHANGE:
+                $notificationData = $notification->data ?? [];
+                
+                // Student emails for dean approval and security events
+                if ($notification->recipient_type === ExeatNotification::RECIPIENT_STUDENT) {
+                    if (isset($notificationData['is_dean_approval']) && $notificationData['is_dean_approval']) {
+                        $methods[] = 'email';
+                    }
+                    // Fallback: check old_status and new_status
+                    elseif (isset($notificationData['old_status']) && isset($notificationData['new_status'])) {
+                        $oldStatus = $notificationData['old_status'];
+                        $newStatus = $notificationData['new_status'];
+                        
+                        // Dean approval
+                        if ($oldStatus === 'dean_review' && $newStatus === 'hostel_signout') {
+                            $methods[] = 'email';
+                        }
+                        // Security sign-out
+                        elseif ($oldStatus === 'hostel_signout' && $newStatus === 'security_signout') {
+                            $methods[] = 'email';
+                        }
+                        // Security sign-in (return)
+                        elseif ($oldStatus === 'security_signout' && $newStatus === 'security_signin') {
+                            $methods[] = 'email';
+                        }
+                    }
+                    // Last resort: check message content
+                    else {
+                        $message = $notification->message ?? '';
+                        if (str_contains($message, 'dean_review') && str_contains($message, 'hostel_signout')) {
+                            $methods[] = 'email';
+                        }
+                        elseif (str_contains($message, 'security_signout') || str_contains($message, 'security_signin')) {
+                            $methods[] = 'email';
+                        }
+                    }
+                }
+                // Parent notifications for parent_consent stage after secretary_review approval
+                elseif ($notification->recipient_type === ExeatNotification::RECIPIENT_PARENT) {
+                    // Check if this is moving to parent_consent stage
+                    if (isset($notificationData['old_status']) && isset($notificationData['new_status'])) {
+                        if ($notificationData['old_status'] === 'secretary_review' && $notificationData['new_status'] === 'parent_consent') {
+                            // Add delivery methods based on preferred contact mode
+                            if ($exeatRequest && $exeatRequest->preferred_mode_of_contact) {
+                                switch ($exeatRequest->preferred_mode_of_contact) {
+                                    case 'email':
+                                        $methods[] = 'email';
+                                        break;
+                                    case 'text':
+                                    case 'sms':
+                                        $methods[] = 'sms';
+                                        break;
+                                    case 'whatsapp':
+                                        $methods[] = 'whatsapp';
+                                        break;
+                                    case 'any':
+                                        // Send via all available methods
+                                        $methods[] = 'email';
+                                        $methods[] = 'sms';
+                                        $methods[] = 'whatsapp';
+                                        break;
+                                }
+                            } else {
+                                // Default to email if no preference specified
+                                $methods[] = 'email';
+                            }
+                        }
+                    }
+                }
+                break;
+                
+            case ExeatNotification::TYPE_STAFF_COMMENT:
+                // Student emails for staff comments (always send email)
+                if ($notification->recipient_type === ExeatNotification::RECIPIENT_STUDENT) {
+                    $methods[] = 'email';
+                    // Note: SMS for staff comments is handled separately in ExeatNotificationService
+                    // via createStaffCommentSmsNotification() method
+                }
+                break;
+        }
+        
+        return $methods;
     }
 
     /**

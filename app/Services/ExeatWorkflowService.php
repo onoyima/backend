@@ -963,8 +963,19 @@ EOT;
      */
     private function sendParentNotification(ExeatRequest $exeat, string $action)
     {
+        // Check if parent email exists
         if (!$exeat->parent_email) {
             Log::warning('No parent email available for exeat request', ['exeat_id' => $exeat->id]);
+            return;
+        }
+
+        // Only send email if preferred contact mode is email
+        if ($exeat->preferred_mode_of_contact !== 'email') {
+            Log::info('Parent notification skipped - preferred contact mode is not email', [
+                'exeat_id' => $exeat->id,
+                'preferred_mode' => $exeat->preferred_mode_of_contact,
+                'action' => $action
+            ]);
             return;
         }
 
@@ -997,13 +1008,15 @@ EOT;
             Log::info('Parent notification sent for security action', [
                 'exeat_id' => $exeat->id,
                 'action' => $action,
-                'parent_email' => $exeat->parent_email
+                'parent_email' => $exeat->parent_email,
+                'preferred_mode' => $exeat->preferred_mode_of_contact
             ]);
         } catch (\Exception $e) {
             Log::error('Failed to send parent notification', [
                 'error' => $e->getMessage(),
                 'exeat_id' => $exeat->id,
-                'action' => $action
+                'action' => $action,
+                'preferred_mode' => $exeat->preferred_mode_of_contact
             ]);
         }
     }

@@ -307,13 +307,21 @@ class ExeatNotificationService
         $title = "Exeat Request Status Updated";
         $message = $this->buildStageChangeMessage($exeatRequest, $oldStatus, $newStatus);
 
+        // Include old and new status in notification data for delivery method determination
+        $data = [
+            'old_status' => $oldStatus,
+            'new_status' => $newStatus,
+            'is_dean_approval' => ($oldStatus === 'dean_review' && $newStatus === 'hostel_signout')
+        ];
+
         return $this->createNotification(
             $exeatRequest,
             $recipients,
             ExeatNotification::TYPE_STAGE_CHANGE,
             $title,
             $message,
-            ExeatNotification::PRIORITY_MEDIUM
+            ExeatNotification::PRIORITY_MEDIUM,
+            $data
         );
     }
 
@@ -510,7 +518,11 @@ class ExeatNotificationService
                 break;
 
             case 'parent_consent':
-                // Parents do not receive notifications - removed parent recipients
+                // Add parent as recipient for parent consent notifications
+                $recipients[] = [
+                    'type' => ExeatNotification::RECIPIENT_PARENT,
+                    'id' => $exeatRequest->student_id // Use student_id as parent identifier
+                ];
                 break;
 
             case 'dean_review':

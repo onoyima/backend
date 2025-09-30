@@ -32,10 +32,13 @@ class VuSession extends Model
 
     /**
      * Get the current active session (status = 1)
+     * If multiple active sessions exist, return the most recent one
      */
     public static function getCurrentSession()
     {
-        return self::where('status', 1)->first();
+        return self::where('status', 1)
+            ->orderBy('created_at', 'desc')
+            ->first();
     }
 
     /**
