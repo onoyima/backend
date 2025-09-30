@@ -104,7 +104,7 @@ class StudentExeatDebtController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'payment_method' => 'required|string|in:paystack',
-            'callback_url' => 'required|url',
+            'callback_url' => 'nullable|url',
         ]);
 
         if ($validator->fails()) {
@@ -148,7 +148,9 @@ class StudentExeatDebtController extends Controller
         }
 
         // Initialize Paystack transaction with the debt model, student, and callback URL
-        $result = $this->paystackService->initializeTransaction($debt, $student, $request->callback_url);
+        // Use provided callback URL or default to the verification endpoint
+        $callbackUrl = $request->callback_url ?: url("/api/student/debts/{$debt->id}/verify-payment");
+        $result = $this->paystackService->initializeTransaction($debt, $student, $callbackUrl);
         
         if (!$result['success']) {
             return response()->json([
