@@ -138,7 +138,15 @@ class AdminStaffController extends Controller
             'exeat_role_id' => $validated['exeat_role_id'],
             'assigned_at' => now(),
         ]);
-        return response()->json(['message' => 'Exeat role assigned to staff.']);
+
+        // Refresh staff data with updated roles to prevent frontend caching issues
+        $staff->load(['exeatRoles.role', 'assignedRoles.role', 'positions']);
+        
+        return response()->json([
+            'message' => 'Exeat role assigned to staff.',
+            'staff' => $staff,
+            'updated_at' => now()->toISOString()
+        ]);
     }
 
     // DELETE /api/admin/staff/{id}/unassign-exeat-role
@@ -156,6 +164,14 @@ class AdminStaffController extends Controller
             return response()->json(['message' => 'Exeat role not assigned to staff.'], 404);
         }
         $role->delete();
-        return response()->json(['message' => 'Exeat role unassigned from staff.']);
+
+        // Refresh staff data with updated roles to prevent frontend caching issues
+        $staff->load(['exeatRoles.role', 'assignedRoles.role', 'positions']);
+        
+        return response()->json([
+            'message' => 'Exeat role unassigned from staff.',
+            'staff' => $staff,
+            'updated_at' => now()->toISOString()
+        ]);
     }
 }

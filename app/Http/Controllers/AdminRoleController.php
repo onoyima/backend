@@ -27,8 +27,17 @@ class AdminRoleController extends Controller
             'exeat_role_id' => $validated['exeat_role_id'],
             'assigned_at' => now(),
         ]);
+        
+        // Refresh staff data with updated roles to prevent frontend caching issues
+        $staff = \App\Models\Staff::with(['exeatRoles.role', 'assignedRoles.role', 'positions'])->find($validated['staff_id']);
+        
         Log::info('Admin created role', ['role_id' => $role->id]);
-        return response()->json(['message' => 'Role assigned.', 'role' => $role], 201);
+        return response()->json([
+            'message' => 'Role assigned.',
+            'role' => $role,
+            'staff' => $staff,
+            'updated_at' => now()->toISOString()
+        ], 201);
     }
 
     // PUT /api/admin/roles/{id}
@@ -43,8 +52,17 @@ class AdminRoleController extends Controller
         ]);
         $role->exeat_role_id = $validated['exeat_role_id'];
         $role->save();
+        
+        // Refresh staff data with updated roles to prevent frontend caching issues
+        $staff = \App\Models\Staff::with(['exeatRoles.role', 'assignedRoles.role', 'positions'])->find($role->staff_id);
+        
         Log::info('Admin updated role', ['role_id' => $role->id]);
-        return response()->json(['message' => 'Role updated.', 'role' => $role]);
+        return response()->json([
+            'message' => 'Role updated.',
+            'role' => $role,
+            'staff' => $staff,
+            'updated_at' => now()->toISOString()
+        ]);
     }
 
     // DELETE /api/admin/roles/{id}
@@ -54,8 +72,19 @@ class AdminRoleController extends Controller
         if (!$role) {
             return response()->json(['message' => 'Role not found.'], 404);
         }
+        
+        // Get staff ID before deleting the role
+        $staffId = $role->staff_id;
         $role->delete();
+        
+        // Refresh staff data with updated roles to prevent frontend caching issues
+        $staff = \App\Models\Staff::with(['exeatRoles.role', 'assignedRoles.role', 'positions'])->find($staffId);
+        
         Log::info('Admin deleted role', ['role_id' => $id]);
-        return response()->json(['message' => 'Role deleted.']);
+        return response()->json([
+            'message' => 'Role deleted.',
+            'staff' => $staff,
+            'updated_at' => now()->toISOString()
+        ]);
     }
 }
