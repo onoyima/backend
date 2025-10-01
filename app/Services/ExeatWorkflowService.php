@@ -304,6 +304,11 @@ class ExeatWorkflowService
                 $additionalNotificationSent = true; // Consider email as sufficient
                 break;
 
+            case 'email':
+                Log::info('Only email sent for preferred mode: email', ['exeat_id' => $exeatRequest->id]);
+                $additionalNotificationSent = true; // Email is the preferred method
+                break;
+
             default:
                 Log::info('Only email sent for unknown preferred mode: ' . $method, ['exeat_id' => $exeatRequest->id]);
                 $additionalNotificationSent = $emailSent; // Consider email as sufficient
