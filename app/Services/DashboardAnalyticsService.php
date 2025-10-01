@@ -648,7 +648,7 @@ class DashboardAnalyticsService
         return $trends;
     }
 
-    public function getPaymentMethodsStats(): array
+    public function getPaymentMethodsStats(int $days = 30): array
     {
         $paymentMethods = StudentExeatDebt::whereNotNull('payment_reference')
             ->where('payment_status', '!=', 'pending')
@@ -712,7 +712,7 @@ class DashboardAnalyticsService
 
     public function getTopDebtors(int $limit = 10): array
     {
-        return StudentExeatDebt::with(['student:id,fname,lname,email,student_id'])
+        return StudentExeatDebt::with(['student:id,fname,lname,email,username'])
             ->select('student_id', DB::raw('COUNT(*) as debt_count'), DB::raw('SUM(amount) as total_amount'))
             ->groupBy('student_id')
             ->orderBy('total_amount', 'desc')
@@ -722,7 +722,7 @@ class DashboardAnalyticsService
                 return [
                     'student_id' => $debt->student_id,
                     'student_name' => $debt->student ? $debt->student->fname . ' ' . $debt->student->lname : 'Unknown',
-                    'student_number' => $debt->student ? $debt->student->student_id : 'N/A',
+                    'student_number' => $debt->student ? $debt->student->username : 'N/A',
                     'debt_count' => $debt->debt_count,
                     'total_amount' => number_format($debt->total_amount, 2),
                 ];
@@ -766,17 +766,17 @@ class DashboardAnalyticsService
     {
         $startDate = Carbon::now()->subDays($days);
         
-        $clearanceByStaff = StudentExeatDebt::with(['clearedByStaff:id,fname,lname,role'])
+        $clearanceByStaff = StudentExeatDebt::with(['clearedByStaff:id,fname,lname'])
             ->where('payment_status', 'cleared')
             ->where('updated_at', '>=', $startDate)
-            ->whereNotNull('cleared_by_staff_id')
+            ->whereNotNull('cleared_by')
             ->get()
             ->groupBy(function ($debt) {
-                return $debt->clearedByStaff ? $debt->clearedByStaff->role : 'Unknown';
+                return $debt->clearedByStaff ? ($debt->clearedByStaff->fname . ' ' . $debt->clearedByStaff->lname) : 'Unknown';
             })
-            ->map(function ($debts, $role) {
+            ->map(function ($debts, $staffName) {
                 return [
-                    'role' => $role,
+                    'staff' => $staffName,
                     'count' => $debts->count(),
                     'amount' => $debts->sum('amount'),
                 ];
@@ -812,10 +812,13 @@ class DashboardAnalyticsService
                 ->limit($limit)
                 ->get()
                 ->map(function ($log) {
+                    $actorInfo = $this->getActorInfo($log);
                     return [
                         'id' => $log->id,
                         'action' => $this->sanitizeAction($log->action),
-                        'actor' => $this->getActorInfo($log),
+                        'actor' => $actorInfo['name'],
+                        'actor_type' => $actorInfo['type'],
+                        'actor_id' => $actorInfo['id'],
                         'timestamp' => $log->created_at->format('Y-m-d H:i:s'),
                         'formatted_time' => $log->created_at->diffForHumans(),
                         'details' => $this->sanitizeDetails($log->details),
@@ -826,39 +829,6 @@ class DashboardAnalyticsService
     }
 
     // Additional helper methods
-     private function getActorInfo($log): string
-     {
-         if ($log->staff) {
-             return $log->staff->fname . ' ' . $log->staff->lname;
-         } elseif ($log->student) {
-             return $log->student->fname . ' ' . $log->student->lname;
-         }
-         return 'System';
-     }
-
-     private function sanitizeDetails(?string $details): string
-     {
-         if (!$details) return '';
-         
-         // Remove sensitive information and format for display
-         $details = json_decode($details, true);
-         if (is_array($details)) {
-             unset($details['password'], $details['token'], $details['secret']);
-             return json_encode($details);
-         }
-         
-         return $details;
-     }
-
-     public function getSystemOverview(): array
-     {
-         return [
-             'total_users' => Staff::count() + Student::count(),
-             'active_requests' => ExeatRequest::whereNotIn('status', ['completed', 'rejected'])->count(),
-             'pending_approvals' => ExeatRequest::where('status', 'pending')->count(),
-             'system_health' => 'Good',
-         ];
-     }
 
      // Stub methods for other dashboard types
      public function getStudentAnalytics(int $deanId, int $days) { return []; }

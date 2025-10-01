@@ -271,12 +271,13 @@ class ExeatWorkflowService
                 break;
 
             case 'text':
+            case 'sms':
                 try {
                     $this->sendSmsOrWhatsapp($parentPhone, $notificationSMS, 'sms');
                     $additionalNotificationSent = true;
-                    Log::info('SMS notification sent for preferred mode: text', ['exeat_id' => $exeatRequest->id]);
+                    Log::info('SMS notification sent for preferred mode: ' . $method, ['exeat_id' => $exeatRequest->id]);
                 } catch (\Exception $e) {
-                    Log::error('SMS notification failed for preferred mode: text', [
+                    Log::error('SMS notification failed for preferred mode: ' . $method, [
                         'exeat_id' => $exeatRequest->id,
                         'error' => $e->getMessage()
                     ]);
@@ -297,7 +298,9 @@ class ExeatWorkflowService
                 break;
 
             case 'phone call':
-                Log::info('Only email sent for preferred mode: phone call', ['exeat_id' => $exeatRequest->id]);
+            case 'phone_call':
+            case 'phone':
+                Log::info('Only email sent for preferred mode: ' . $method, ['exeat_id' => $exeatRequest->id]);
                 $additionalNotificationSent = true; // Consider email as sufficient
                 break;
 

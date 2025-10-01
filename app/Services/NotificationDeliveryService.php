@@ -144,6 +144,12 @@ class NotificationDeliveryService
                                     case 'whatsapp':
                                         $methods[] = 'whatsapp';
                                         break;
+                                    case 'phone':
+                                    case 'phone_call':
+                                    case 'phone call':
+                                        // For phone calls, we'll send email as the primary method
+                                        $methods[] = 'email';
+                                        break;
                                     case 'any':
                                         // Send via all available methods
                                         $methods[] = 'email';

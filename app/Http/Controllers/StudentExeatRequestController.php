@@ -37,7 +37,7 @@ class StudentExeatRequestController extends Controller
             'destination' => 'required|string',
             'departure_date' => 'required|date',
             'return_date' => 'required|date|after_or_equal:departure_date',
-            'preferred_mode_of_contact' => 'required|in:whatsapp,text,phone_call,any',
+            'preferred_mode_of_contact' => 'required|in:whatsapp,text,sms,phone_call,phone,any',
         ]);
 
         // Check for unpaid exeat debts
