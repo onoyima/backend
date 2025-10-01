@@ -20,9 +20,14 @@ return Application::configure(basePath: dirname(__DIR__))
             \App\Http\Middleware\CustomCorsMiddleware::class,
             \Illuminate\Http\Middleware\HandleCors::class,
         ]);
-        
+
         $middleware->append(ApiStatusLogger::class);
-        
+
+        // Exclude CSRF verification for admin command routes
+        $middleware->validateCsrfTokens(except: [
+            'admin/commands/*',
+        ]);
+
         $middleware->alias([
             'role' => \App\Http\Middleware\RoleMiddleware::class,
             'admin' => \App\Http\Middleware\AdminMiddleware::class,

@@ -424,7 +424,7 @@ class ExeatNotificationService
             'cmd' => 'Chief Medical Director',
             'secretary' => 'Secretary of Students Affairs',
             'dean' => 'Dean of Students Affairs',
-            'dean2' => 'Dean of Students Affairs',
+            'deputy-dean' => 'Deputy Dean of Students Affairs',
             'hostel_admin' => 'Hostel Administrator',
             'security' => 'Security Officer',
             'admin' => 'Administrator'

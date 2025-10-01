@@ -109,16 +109,70 @@ class ExeatWorkflowService
                 $exeatRequest->status = 'parent_consent';
                 break;
             case 'parent_consent':
-                $exeatRequest->status = 'dean_review';
+                // Check category type for special workflows
+                $categoryName = $exeatRequest->category ? strtolower($exeatRequest->category->name) : '';
+                $isDailyCategory = $categoryName === 'daily' || $categoryName === 'daily_medical';
+                $isHolidayCategory = $categoryName === 'holiday';
+                $isMedical = $exeatRequest->is_medical;
+
+                if ($isDailyCategory) {
+                    // ALL daily exeats (medical and non-medical): skip dean_review and go directly to hostel_signout
+                    $exeatRequest->status = 'hostel_signout';
+                    Log::info('WorkflowService: Daily exeat skipping dean_review', [
+                        'exeat_id' => $exeatRequest->id,
+                        'category' => $exeatRequest->category->name,
+                        'is_medical' => $isMedical,
+                        'type' => $isMedical ? 'daily_medical' : 'daily_non_medical',
+                        'skipped_to' => 'hostel_signout'
+                    ]);
+                } else {
+                    // All non-daily categories: go through dean_review
+                    $exeatRequest->status = 'dean_review';
+                    Log::info('WorkflowService: Non-daily exeat proceeding through dean_review', [
+                        'exeat_id' => $exeatRequest->id,
+                        'category' => $exeatRequest->category ? $exeatRequest->category->name : 'unknown',
+                        'is_medical' => $isMedical
+                    ]);
+                }
                 break;
             case 'dean_review':
-                $exeatRequest->status = 'hostel_signout';
+                // Check if it's a holiday category - skip hostel steps
+                $categoryName = $exeatRequest->category ? strtolower($exeatRequest->category->name) : '';
+                $isHolidayCategory = $categoryName === 'holiday';
+
+                if ($isHolidayCategory) {
+                    // Holiday exeats: skip hostel steps and go directly to security_signout
+                    $exeatRequest->status = 'security_signout';
+                    Log::info('WorkflowService: Holiday exeat skipping hostel steps', [
+                        'exeat_id' => $exeatRequest->id,
+                        'category' => $exeatRequest->category->name,
+                        'skipped_to' => 'security_signout'
+                    ]);
+                } else {
+                    // All other categories: proceed to hostel_signout
+                    $exeatRequest->status = 'hostel_signout';
+                }
                 break;
             case 'hostel_signout':
                 $exeatRequest->status = 'security_signout';
                 break;
             case 'security_signout':
-                $exeatRequest->status = 'security_signin';
+                // Check if it's a holiday category - go directly to completed
+                $categoryName = $exeatRequest->category ? strtolower($exeatRequest->category->name) : '';
+                $isHolidayCategory = $categoryName === 'holiday';
+
+                if ($isHolidayCategory) {
+                    // Holiday exeats: go directly to completed (no signin required)
+                    $exeatRequest->status = 'completed';
+                    Log::info('WorkflowService: Holiday exeat completed after security signout', [
+                        'exeat_id' => $exeatRequest->id,
+                        'category' => $exeatRequest->category->name,
+                        'final_status' => 'completed'
+                    ]);
+                } else {
+                    // All other categories: proceed to security_signin
+                    $exeatRequest->status = 'security_signin';
+                }
                 break;
             case 'security_signin':
                 $exeatRequest->status = 'hostel_signin';
@@ -338,7 +392,7 @@ class ExeatWorkflowService
         // Determine overall notification status
         $notificationStatus = 'failed';
         $statusMessage = 'No notifications could be sent';
-        
+
         if ($method === 'email') {
             if (empty($parentEmail)) {
                 $notificationStatus = 'no_email';
@@ -646,13 +700,13 @@ class ExeatWorkflowService
         try {
             // Use the WhatsAppService for consistent messaging through Twilio
             $whatsAppService = app(\App\Services\WhatsAppService::class);
-            
+
             if (!$whatsAppService->isConfigured()) {
                 throw new \Exception('WhatsApp service is not properly configured');
             }
-            
+
             $result = $whatsAppService->sendMessage($to, $message);
-            
+
             if ($result['success']) {
                 \Log::info("WhatsApp message sent successfully", [
                     'to' => $to,
@@ -847,33 +901,33 @@ EOT;
             'return_date' => $exeatRequest->return_date,
             'current_time' => now()->toDateTimeString()
         ]);
-        
+
         $returnDate = \Carbon\Carbon::parse($exeatRequest->return_date);
         $actualReturnTime = now();
-        
+
         Log::info('DEBUG: Time comparison', [
             'return_date_parsed' => $returnDate->toDateTimeString(),
             'actual_return_time' => $actualReturnTime->toDateTimeString(),
             'is_late' => $actualReturnTime->gt($returnDate)
         ]);
-        
+
         // Check if student is returning late
         if ($actualReturnTime->gt($returnDate)) {
             // Calculate debt using exact 24-hour periods at 11:59 PM
             $daysOverdue = $this->calculateDaysOverdue($returnDate, $actualReturnTime);
             $debtAmount = $daysOverdue * 10000;
-            
+
             // Check if debt already exists for this exeat
             $existingDebt = \App\Models\StudentExeatDebt::where('exeat_request_id', $exeatRequest->id)
                 ->where('payment_status', '!=', 'cleared')
                 ->first();
-            
+
             Log::info('DEBUG: Debt creation check', [
                 'days_overdue' => $daysOverdue,
                 'debt_amount' => $debtAmount,
                 'existing_debt' => $existingDebt ? $existingDebt->toArray() : null
             ]);
-            
+
             if (!$existingDebt) {
                 // Create new debt record
                 $debt = \App\Models\StudentExeatDebt::create([
@@ -882,7 +936,7 @@ EOT;
                     'amount' => $debtAmount,
                     'payment_status' => 'unpaid',
                 ]);
-                
+
                 // Create audit log for debt creation
                 AuditLog::create([
                     'staff_id' => null, // System-generated debt
@@ -900,7 +954,7 @@ EOT;
                     ]),
                     'timestamp' => now(),
                 ]);
-                
+
                 // Send debt notification to student (email only, no SMS)
                 try {
                     $student = \App\Models\Student::find($exeatRequest->student_id);
@@ -914,7 +968,7 @@ EOT;
                         'error' => $e->getMessage()
                     ]);
                 }
-                
+
                 Log::info('Created overdue debt for late return', [
                     'exeat_id' => $exeatRequest->id,
                     'student_id' => $exeatRequest->student_id,
@@ -948,40 +1002,53 @@ EOT;
             ]);
         }
 
-        // Handle security signin
-        if ($oldStatus === 'security_signin' && $approval->role === 'security') {
-            Log::info('DEBUG: Security signin process started', [
-                'exeat_id' => $exeatRequest->id,
-                'old_status' => $oldStatus,
-                'approval_role' => $approval->role,
-                'security_id' => $approval->staff_id
-            ]);
-            
-            $signout = SecuritySignout::where('exeat_request_id', $exeatRequest->id)
-                ->whereNull('signin_time')
-                ->first();
+        // Handle security signin - Allow any role with permission to approve security signin
+        if ($oldStatus === 'security_signin') {
+            // Check if the approving role has permission for security signin
+            $allowedRoles = ['security', 'admin', 'dean', 'deputy-dean'];
 
-            Log::info('DEBUG: Security signout record found', [
-                'signout_record' => $signout ? $signout->toArray() : null
-            ]);
-
-            if ($signout) {
-                $signout->signin_time = now();
-                $signout->save();
-
-                Log::info('DEBUG: About to call checkAndCreateOverdueDebt', [
-                    'exeat_id' => $exeatRequest->id
+            if (in_array($approval->role, $allowedRoles)) {
+                Log::info('DEBUG: Security signin process started', [
+                    'exeat_id' => $exeatRequest->id,
+                    'old_status' => $oldStatus,
+                    'approval_role' => $approval->role,
+                    'staff_id' => $approval->staff_id
                 ]);
 
-                // Check if student is returning late and create debt
-                $this->checkAndCreateOverdueDebt($exeatRequest);
+                $signout = SecuritySignout::where('exeat_request_id', $exeatRequest->id)
+                    ->whereNull('signin_time')
+                    ->first();
 
-                // Send parent notification for sign-in
-                $this->sendParentNotification($exeatRequest, 'IN');
+                Log::info('DEBUG: Security signout record found', [
+                    'signout_record' => $signout ? $signout->toArray() : null
+                ]);
 
-                Log::info('Security signed in student at gate', [
+                if ($signout) {
+                    $signout->signin_time = now();
+                    $signout->save();
+
+                    Log::info('DEBUG: About to call checkAndCreateOverdueDebt', [
+                        'exeat_id' => $exeatRequest->id,
+                        'approving_role' => $approval->role
+                    ]);
+
+                    // Check if student is returning late and create debt
+                    $this->checkAndCreateOverdueDebt($exeatRequest);
+
+                    // Send parent notification for sign-in
+                    $this->sendParentNotification($exeatRequest, 'IN');
+
+                    Log::info('Student signed in at gate', [
+                        'exeat_id' => $exeatRequest->id,
+                        'approving_staff_id' => $approval->staff_id,
+                        'approving_role' => $approval->role
+                    ]);
+                }
+            } else {
+                Log::warning('Unauthorized role attempted security signin approval', [
                     'exeat_id' => $exeatRequest->id,
-                    'security_id' => $approval->staff_id
+                    'attempted_role' => $approval->role,
+                    'staff_id' => $approval->staff_id
                 ]);
             }
         }
@@ -1341,7 +1408,7 @@ EOT;
 
     /**
      * Calculate days overdue using exact 24-hour periods at 11:59 PM
-     * 
+     *
      * @param \Carbon\Carbon $returnDate
      * @param \Carbon\Carbon $actualReturnTime
      * @return int
@@ -1350,21 +1417,21 @@ EOT;
     {
         // Set return date to 11:59 PM of the expected return date
         $returnDateEnd = $returnDate->copy()->setTime(23, 59, 59);
-        
+
         // If actual return is before or at 11:59 PM of return date, no debt
         if ($actualReturnTime->lte($returnDateEnd)) {
             return 0;
         }
-        
+
         // Calculate full 24-hour periods after 11:59 PM of return date
         $daysPassed = 0;
         $currentCheckDate = $returnDateEnd->copy();
-        
+
         while ($currentCheckDate->lt($actualReturnTime)) {
             $currentCheckDate->addDay()->setTime(23, 59, 59);
             $daysPassed++;
         }
-        
+
         return $daysPassed;
     }
 }

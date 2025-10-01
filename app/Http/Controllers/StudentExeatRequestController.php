@@ -40,36 +40,53 @@ class StudentExeatRequestController extends Controller
             'preferred_mode_of_contact' => 'required|in:whatsapp,text,sms,phone_call,phone,any,email',
         ]);
 
-        // Check for unpaid exeat debts
-        $unpaidDebts = \App\Models\StudentExeatDebt::where('student_id', $user->id)
-            ->whereIn('payment_status', ['unpaid', 'paid']) // Include 'paid' but not yet cleared
-            ->with('exeatRequest:id,departure_date,return_date')
-            ->get();
-
-        if ($unpaidDebts->count() > 0) {
-            $totalDebt = $unpaidDebts->sum('amount');
-            $debtDetails = $unpaidDebts->map(function ($debt) {
-                return [
-                    'debt_id' => $debt->id,
-                    'amount' => $debt->amount,
-                    'overdue_hours' => $debt->overdue_hours,
-                    'payment_status' => $debt->payment_status,
-                    'exeat_request_id' => $debt->exeat_request_id,
-                    'departure_date' => $debt->exeatRequest->departure_date ?? null,
-                    'return_date' => $debt->exeatRequest->return_date ?? null,
-                ];
-            });
-
+        // Get category to check if it's holiday (skip debt checks for holiday)
+        // Only allow active categories
+        $category = ExeatCategory::where('id', $validated['category_id'])
+                                 ->where('status', 'active')
+                                 ->first();
+        
+        if (!$category) {
             return response()->json([
-                'status' => 'error',
-                'message' => 'You have outstanding exeat debts that must be cleared before creating a new exeat request.',
-                'details' => [
-                    'total_debt_amount' => $totalDebt,
-                    'number_of_debts' => $unpaidDebts->count(),
-                    'debts' => $debtDetails,
-                    'payment_instructions' => 'Please pay your outstanding debts through the payment system or contact the admin office for assistance.'
-                ]
-            ], 403);
+                'message' => 'Invalid or inactive category selected.',
+                'errors' => ['category_id' => ['The selected category is not available.']]
+            ], 422);
+        }
+        
+        $isHolidayCategory = strtolower($category->name) === 'holiday';
+
+        // Check for unpaid exeat debts (skip for holiday category)
+        if (!$isHolidayCategory) {
+            $unpaidDebts = \App\Models\StudentExeatDebt::where('student_id', $user->id)
+                ->whereIn('payment_status', ['unpaid', 'paid']) // Include 'paid' but not yet cleared
+                ->with('exeatRequest:id,departure_date,return_date')
+                ->get();
+
+            if ($unpaidDebts->count() > 0) {
+                $totalDebt = $unpaidDebts->sum('amount');
+                $debtDetails = $unpaidDebts->map(function ($debt) {
+                    return [
+                        'debt_id' => $debt->id,
+                        'amount' => $debt->amount,
+                        'overdue_hours' => $debt->overdue_hours,
+                        'payment_status' => $debt->payment_status,
+                        'exeat_request_id' => $debt->exeat_request_id,
+                        'departure_date' => $debt->exeatRequest->departure_date ?? null,
+                        'return_date' => $debt->exeatRequest->return_date ?? null,
+                    ];
+                });
+
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'You have outstanding exeat debts that must be cleared before creating a new exeat request.',
+                    'details' => [
+                        'total_debt_amount' => $totalDebt,
+                        'number_of_debts' => $unpaidDebts->count(),
+                        'debts' => $debtDetails,
+                        'payment_instructions' => 'Please pay your outstanding debts through the payment system or contact the admin office for assistance.'
+                    ]
+                ], 403);
+            }
         }
 
         // Get student academic info for matric_no
@@ -92,10 +109,17 @@ class StudentExeatRequestController extends Controller
                 'message' => 'You already have an active exeat request. Please wait until it is completed or rejected before submitting a new one.'
             ], 403);
         }
-        // Get category
-        $category = ExeatCategory::find($validated['category_id']);
-        $isMedical = strtolower($category->name) === 'medical';
-        $initialStatus = $isMedical ? 'cmd_review' : 'secretary_review';
+        // Use already retrieved category and determine medical status and initial status
+        $isMedical = in_array(strtolower($category->name), ['medical', 'daily_medical']);
+        
+        // Determine initial status based on category
+        if ($isMedical) {
+            $initialStatus = 'cmd_review';
+        } elseif ($isHolidayCategory) {
+            $initialStatus = 'dean_review'; // Holiday exeats skip secretary_review and parent_consent
+        } else {
+            $initialStatus = 'secretary_review';
+        }
         $exeat = ExeatRequest::create([
             'student_id' => $user->id,
             'matric_no' => $studentAcademic ? $studentAcademic->matric_no : null,
@@ -114,10 +138,11 @@ class StudentExeatRequestController extends Controller
             'status' => $initialStatus,
             'is_medical' => $isMedical,
         ]);
-        // Create first approval stage
+        // Create first approval stage based on category
+        $initialRole = $isMedical ? 'cmd' : ($isHolidayCategory ? 'dean' : 'secretary');
         \App\Models\ExeatApproval::create([
             'exeat_request_id' => $exeat->id,
-            'role' => $isMedical ? 'cmd' : 'secretary',
+            'role' => $initialRole,
             'status' => 'pending',
         ]);
 
@@ -173,7 +198,7 @@ public function profile(Request $request)
 public function categories()
 {
     return response()->json([
-        'categories' => ExeatCategory::all(['id', 'name', 'description'])
+        'categories' => ExeatCategory::where('status', 'active')->get(['id', 'name', 'description'])
     ]);
 }
 
@@ -258,7 +283,7 @@ public function categories()
         // Add pagination with configurable per_page parameter
         $perPage = $request->get('per_page', 20); // Default 20 items per page
         $perPage = min($perPage, 100); // Maximum 100 items per page
-        
+
         // Get all audit logs related to this exeat request with pagination
         $auditLogs = AuditLog::where('target_type', 'exeat_request')
             ->where('target_id', $id)

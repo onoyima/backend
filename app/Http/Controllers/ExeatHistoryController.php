@@ -38,7 +38,7 @@ class ExeatHistoryController extends Controller
 
         $validated = $request->validate([
             'per_page' => 'integer|min:1|max:100',
-            'status' => 'string|in:pending,approved,rejected,cancelled,completed,dean_review,deput-dean_review,cmd_review',
+            'status' => 'string|in:pending,approved,rejected,cancelled,completed,dean_review,secretary_review,cmd_review',
             'date_from' => 'date',
             'date_to' => 'date|after_or_equal:date_from',
             'student_name' => 'string|max:255',
@@ -166,7 +166,7 @@ class ExeatHistoryController extends Controller
         // Validate status - include all workflow statuses
         $validStatuses = [
             'pending', 'cmd_review', 'secretary_review', 'parent_consent', 
-            'dean_review', 'hostel_signout', 'security_signout', 'security_signin', 
+            'dean_review', 'secretary_review', 'hostel_signout', 'security_signout', 'security_signin', 
             'hostel_signin', 'completed', 'approved', 'rejected', 'cancelled'
         ];
         
@@ -488,7 +488,7 @@ class ExeatHistoryController extends Controller
             'cmd' => ['cmd_review'],
             'secretary' => ['secretary_review', 'parent_consent'],
             'dean' => $allStatuses, // Dean can see all statuses including completed
-            'dean2' => $allStatuses, // Dean2 can see all statuses including completed
+            'deputy-dean' => $allStatuses, // Deputy Dean can see all statuses including completed
             'admin' => $allStatuses, // Admin can see all statuses including completed
             'hostel_admin' => ['hostel_signout', 'hostel_signin'],
             'security' => ['security_signout', 'security_signin'],

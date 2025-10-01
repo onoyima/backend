@@ -40,7 +40,7 @@ class StaffExeatRequestController extends Controller
             'cmd' => ['cmd_review'],
             'secretary' => ['secretary_review', 'parent_consent'],
             'dean' => $activeStatuses, // Dean can see all active statuses
-            'dean2' => $activeStatuses, // Dean2 can see all active statuses
+            'deputy-dean' => $activeStatuses, // Deputy-dean can see all active statuses
             'admin' => $activeStatuses, // Admin can see all active statuses
             'hostel_admin' => ['hostel_signout', 'hostel_signin'],
             'security' => ['security_signout', 'security_signin'],
@@ -78,9 +78,9 @@ class StaffExeatRequestController extends Controller
             return $roleMap[$currentStatus];
         }
 
-        // Special handling for dean2 - can act on ALL statuses with appropriate role mapping
-        if (in_array('dean2', $roles) && isset($roleMap[$currentStatus])) {
-            return $roleMap[$currentStatus]; // dean2 can act as any required role for any status
+        // Special handling for deputy-dean - can act on ALL statuses with appropriate role mapping
+        if (in_array('deputy-dean', $roles) && isset($roleMap[$currentStatus])) {
+            return $roleMap[$currentStatus]; // deputy-dean can act as any required role for any status
         }
 
         // For non-admin users, check if they have the specific role for the current status
@@ -98,8 +98,8 @@ class StaffExeatRequestController extends Controller
      */
     private function applyHostelFiltering($query, $user, $roleNames)
     {
-        // If user is dean, dean2, or admin, they can see all exeat requests
-        if (array_intersect(['dean', 'dean2', 'admin'], $roleNames)) {
+        // If user is dean, deputy-dean, or admin, they can see all exeat requests
+        if (array_intersect(['dean', 'deputy-dean', 'admin'], $roleNames)) {
             return $query;
         }
 
@@ -127,8 +127,8 @@ class StaffExeatRequestController extends Controller
      */
     private function hasHostelAccess($user, $exeatRequest, $roleNames)
     {
-        // If user is dean, dean2, or admin, they have access to all
-        if (array_intersect(['dean', 'dean2', 'admin'], $roleNames)) {
+        // If user is dean, deputy-dean, or admin, they have access to all
+        if (array_intersect(['dean', 'deputy-dean', 'admin'], $roleNames)) {
             return true;
         }
 
@@ -223,7 +223,7 @@ class StaffExeatRequestController extends Controller
         ];
 
         $userRoles = $user->exeatRoles()->with('role')->get()->pluck('role.name')->toArray();
-        if (in_array('admin', $userRoles) || in_array('dean', $userRoles)) {
+        if (in_array('admin', $userRoles) || in_array('dean', $userRoles) || in_array('deputy-dean', $userRoles)) {
             $byStatus = DB::table('exeat_requests')
                 ->select('status', DB::raw('count(*) as count'))
                 ->groupBy('status')
@@ -764,7 +764,7 @@ public function approve(StaffExeatApprovalRequest $request, $id)
             'cmd' => ['cmd_review'],
             'secretary' => ['secretary_review'],
             'dean' => $allStatuses, // Dean can see all statuses
-            'dean2' => $allStatuses, // Dean2 can see all statuses
+            'deputy-dean' => $allStatuses, // Deputy-dean can see all statuses
             'admin' => $allStatuses, // Admin can see all statuses
             'hostel_admin' => ['hostel_signout', 'hostel_signin'],
             'security' => ['security_signout', 'security_signin'],
@@ -784,11 +784,11 @@ public function approve(StaffExeatApprovalRequest $request, $id)
             return response()->json(['message' => 'No handled statuses found for your roles.'], 403);
         }
 
-        // Check if user has admin, dean, or dean2 role - they can see ALL requests
-        $canSeeAllRequests = array_intersect(['admin', 'dean', 'dean2'], $roleNames);
+        // Check if user has admin, dean, or deputy-dean role - they can see ALL requests
+        $canSeeAllRequests = array_intersect(['admin', 'dean', 'deputy-dean'], $roleNames);
 
         if (!empty($canSeeAllRequests)) {
-            // Admin, dean, and dean2 can see all exeat requests
+            // Admin, dean, and deputy-dean can see all exeat requests
             $allRequestIds = ExeatRequest::pluck('id')->toArray();
         } else {
             // Get all exeat requests that have passed through the workflow stages handled by this staff member's roles
@@ -1097,8 +1097,7 @@ public function approve(StaffExeatApprovalRequest $request, $id)
             $notifications = $this->notificationService->sendStaffCommentNotification(
                 $exeatRequest,
                 $user,
-                $validated['comment'],
-                $currentStatus
+                $validated['comment']
             );
             
             // Create audit log

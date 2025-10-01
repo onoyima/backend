@@ -236,3 +236,9 @@ class ExeatRequest extends Model
 // pending, cmd_review, secretary_review, parent_consent, dean_review,
 // hostel_signout, security_signout, security_signin, hostel_signin,
 // completed, rejected, appeal
+//
+// Expiration Logic:
+// - Exeat requests expire if departure_date + 6 hours has passed
+// - Only applies to non-daily categories  
+// - Only expires requests where student hasn't left school yet (not reached security_signin stage)
+// - Expired requests are marked: is_expired=true, status='completed', expired_at=timestamp

@@ -24,7 +24,7 @@ class CheckOverdueExeats extends Command
      *
      * @var string
      */
-    protected $description = 'Check for overdue exeat requests (monitoring only - debts created on return)';
+    protected $description = 'Check for overdue exeat requests from students who have left campus and automatically complete them to allow new applications';
     
     /**
      * The exeat notification service.
@@ -53,15 +53,18 @@ class CheckOverdueExeats extends Command
         $this->info('Checking for overdue exeat requests...');
         
         // Get all exeat requests that have passed their return date
-        // and student hasn't completed the return process (not completed, rejected, or cancelled)
+        // and student has left campus (passed security signout) but hasn't completed the return process
+        // Only consider exeats overdue if student has actually left campus
         $overdueExeats = ExeatRequest::where('return_date', '<', Carbon::now()->toDateString())
             ->whereNotIn('status', ['completed', 'rejected', 'cancelled'])
             ->where('is_expired', false)
+            ->whereIn('status', ['security_signin', 'hostel_signin']) // Only students who have left campus
             ->get();
             
-        $this->info("Found {$overdueExeats->count()} overdue exeat requests.");
+        $this->info("Found {$overdueExeats->count()} overdue exeat requests from students who have left campus.");
         
         $baseDebtAmount = 10000; // 10,000 Naira base fee for every 24 hours
+        $completedCount = 0;
         
         foreach ($overdueExeats as $exeat) {
             $returnDate = Carbon::parse($exeat->return_date);
@@ -71,20 +74,32 @@ class CheckOverdueExeats extends Command
             $daysOverdue = $this->calculateDaysOverdue($returnDate, $now);
             $potentialDebtAmount = $daysOverdue * $baseDebtAmount;
             
-            // Only log overdue students for monitoring (no debt creation)
-            $this->info("Overdue student monitoring - Exeat #{$exeat->id}, Student #{$exeat->student_id}: {$daysOverdue} days overdue (Potential debt: ₦{$potentialDebtAmount})");
+            $this->info("Processing overdue exeat - ID: #{$exeat->id}, Student: #{$exeat->student_id}, Days overdue: {$daysOverdue}, Potential debt: ₦{$potentialDebtAmount}");
             
-            // Log for admin monitoring
-            Log::info('Overdue student detected', [
+            // Auto-complete overdue exeats to allow students to apply for new ones
+            $originalStatus = $exeat->status;
+            $exeat->update([
+                'status' => 'completed',
+                'is_expired' => true,
+                'expired_at' => now()
+            ]);
+            
+            $completedCount++;
+            
+            // Log the automatic completion
+            Log::info('Overdue exeat automatically completed', [
                 'exeat_id' => $exeat->id,
                 'student_id' => $exeat->student_id,
+                'original_status' => $originalStatus,
                 'days_overdue' => $daysOverdue,
                 'potential_debt' => $potentialDebtAmount,
-                'status' => $exeat->status
+                'completed_at' => now()->toDateTimeString()
             ]);
+            
+            $this->line("  ✓ Completed overdue exeat #{$exeat->id} - Student can now apply for new exeats");
         }
         
-        $this->info('Overdue exeat check completed.');
+        $this->info("Overdue exeat check completed. {$completedCount} overdue exeats were automatically completed.");
         
         return 0;
     }
