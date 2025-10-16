@@ -31,9 +31,16 @@ class StaffExeatRequestController extends Controller
     {
         // Define all workflow statuses (excluding completed, rejected, and appeal)
         $activeStatuses = [
-            'pending', 'cmd_review', 'secretary_review', 'parent_consent',
-            'dean_review', 'hostel_signout', 'security_signout', 'security_signin',
-            'hostel_signin', 'cancelled'
+            'pending',
+            'cmd_review',
+            'secretary_review',
+            'parent_consent',
+            'dean_review',
+            'hostel_signout',
+            'security_signout',
+            'security_signin',
+            'hostel_signin',
+            'cancelled'
         ];
 
         $roleStatusMap = [
@@ -175,6 +182,8 @@ class StaffExeatRequestController extends Controller
             $query->where('status', $request->input('status'));
         }
 
+        // Commented out pagination for now
+        /*
         // Add pagination with configurable per_page parameter
         $perPage = $request->get('per_page', 20); // Default 20 items per page
         $perPage = min($perPage, 100); // Maximum 100 items per page
@@ -192,6 +201,15 @@ class StaffExeatRequestController extends Controller
                 'to' => $exeatRequests->lastItem(),
                 'has_more_pages' => $exeatRequests->hasMorePages()
             ]
+        ]);
+        */
+
+        // Fetch all records without pagination
+        $exeatRequests = $query->orderBy('created_at', 'desc')->get();
+
+        return response()->json([
+            'exeat_requests' => $exeatRequests,
+            'pagination' => null
         ]);
     }
 
@@ -283,7 +301,7 @@ class StaffExeatRequestController extends Controller
 
         return response()->json(['exeat_request' => $exeatRequest]);
     }
-    
+
     /**
      * Edit an exeat request (staff only)
      *
@@ -329,8 +347,10 @@ class StaffExeatRequestController extends Controller
         }
 
         // Check if exeat can be edited
-        if (in_array($exeat->status, ['revoked', 'rejected', 'cancelled']) && 
-            (!isset($validated['status']) || $validated['status'] !== 'completed')) {
+        if (
+            in_array($exeat->status, ['revoked', 'rejected', 'cancelled']) &&
+            (!isset($validated['status']) || $validated['status'] !== 'completed')
+        ) {
             return response()->json([
                 'message' => 'This exeat request cannot be edited as it is already ' . $exeat->status . '.'
             ], 409);
@@ -349,11 +369,11 @@ class StaffExeatRequestController extends Controller
                         'from' => $exeat->$field,
                         'to' => $value
                     ];
-                    
+
                     if ($field === 'actual_return_date') {
                         $actualReturnDateChanged = true;
                     }
-                    
+
                     $exeat->$field = $value;
                 }
             }
@@ -361,7 +381,7 @@ class StaffExeatRequestController extends Controller
             // Only save if there are changes
             if (!empty($changes)) {
                 $exeat->save();
-                
+
                 // Recalculate debt if actual_return_date was changed
                 if ($actualReturnDateChanged) {
                     $this->recalculateDebt($exeat, $oldActualReturnDate);
@@ -415,7 +435,7 @@ class StaffExeatRequestController extends Controller
             ], 500);
         }
     }
-    
+
     /**
      * Recalculate student debt based on actual return date
      *
@@ -429,27 +449,27 @@ class StaffExeatRequestController extends Controller
         if (!$exeat->actual_return_date) {
             return;
         }
-        
+
         // Calculate days late using exact 24-hour periods at 11:59 PM
         $returnDate = \Carbon\Carbon::parse($exeat->return_date);
         $actualReturnDate = \Carbon\Carbon::parse($exeat->actual_return_date);
         $daysLate = $this->calculateDaysOverdue($returnDate, $actualReturnDate);
-        
+
         // Only create/update debt if student returned late
         if ($daysLate > 0) {
             // Check for existing debt
             $debt = StudentExeatDebt::where('exeat_request_id', $exeat->id)->first();
-            
+
             // Use standard fee of 10,000 per day
             $amount = $daysLate * 10000;
-            
+
             if ($debt) {
                 $oldAmount = $debt->amount;
                 // Update existing debt
                 $debt->update([
                     'amount' => $amount,
                 ]);
-                
+
                 // Create audit log for debt update
                 AuditLog::create([
                     'staff_id' => auth()->id(),
@@ -476,7 +496,7 @@ class StaffExeatRequestController extends Controller
                     'amount' => $amount,
                     'payment_status' => 'unpaid',
                 ]);
-                
+
                 // Create audit log for debt creation
                 AuditLog::create([
                     'staff_id' => auth()->id(),
@@ -498,7 +518,7 @@ class StaffExeatRequestController extends Controller
         } else if ($oldActualReturnDate) {
             // If the actual return date was changed and is now on time, remove any existing debt
             $deletedDebts = StudentExeatDebt::where('exeat_request_id', $exeat->id)->get();
-            
+
             foreach ($deletedDebts as $deletedDebt) {
                 // Create audit log for debt removal
                 AuditLog::create([
@@ -518,183 +538,183 @@ class StaffExeatRequestController extends Controller
                     'timestamp' => now(),
                 ]);
             }
-            
+
             StudentExeatDebt::where('exeat_request_id', $exeat->id)->delete();
         }
     }
 
-public function approve(StaffExeatApprovalRequest $request, $id)
-{
-    $user = $request->user();
+    public function approve(StaffExeatApprovalRequest $request, $id)
+    {
+        $user = $request->user();
 
-    if (!($user instanceof \App\Models\Staff)) {
-        return response()->json(['message' => 'Unauthorized.'], 403);
+        if (!($user instanceof \App\Models\Staff)) {
+            return response()->json(['message' => 'Unauthorized.'], 403);
+        }
+
+        $exeatRequest = ExeatRequest::with('student:id,fname,lname,passport')->find($id);
+        if (!$exeatRequest) {
+            return response()->json(['message' => 'Exeat request not found.'], 404);
+        }
+
+        $roleNames = $user->exeatRoles()->with('role')->get()->pluck('role.name')->toArray();
+        $allowedStatuses = $this->getAllowedStatuses($roleNames);
+
+        if (!in_array($exeatRequest->status, $allowedStatuses)) {
+            return response()->json(['message' => 'You do not have permission to approve this request at this stage.'], 403);
+        }
+
+        // ✅ Determine acting role
+        $actingRole = $this->getActingRole($user, $exeatRequest->status);
+
+        // ✅ Prevent duplicate approval for same role and request
+        $alreadyApproved = ExeatApproval::where('exeat_request_id', $exeatRequest->id)
+            ->where('staff_id', $user->id)
+            ->where('role', $actingRole)
+            ->where('method', $exeatRequest->status)
+            ->exists();
+
+        if ($alreadyApproved) {
+            return response()->json(['message' => "You have already approved this request as '{$actingRole}'."], 409);
+        }
+
+        $validated = $request->validate(['comment' => 'nullable|string']);
+
+        DB::beginTransaction();
+        try {
+            $approval = ExeatApproval::create([
+                'exeat_request_id' => $exeatRequest->id,
+                'staff_id' => $user->id,
+                'status' => 'approved',
+                'comment' => $validated['comment'] ?? null,
+                'role' => $actingRole,
+                'method' => $exeatRequest->status,
+            ]);
+
+            $this->workflowService->approve($exeatRequest, $approval, $approval->comment);
+
+            DB::commit();
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            return response()->json(['message' => 'Approval failed: ' . $e->getMessage()], 500);
+        }
+
+        return response()->json(['message' => 'Exeat request approved.', 'exeat_request' => $exeatRequest]);
     }
-
-    $exeatRequest = ExeatRequest::with('student:id,fname,lname,passport')->find($id);
-    if (!$exeatRequest) {
-        return response()->json(['message' => 'Exeat request not found.'], 404);
-    }
-
-    $roleNames = $user->exeatRoles()->with('role')->get()->pluck('role.name')->toArray();
-    $allowedStatuses = $this->getAllowedStatuses($roleNames);
-
-    if (!in_array($exeatRequest->status, $allowedStatuses)) {
-        return response()->json(['message' => 'You do not have permission to approve this request at this stage.'], 403);
-    }
-
-    // ✅ Determine acting role
-    $actingRole = $this->getActingRole($user, $exeatRequest->status);
-
-    // ✅ Prevent duplicate approval for same role and request
-    $alreadyApproved = ExeatApproval::where('exeat_request_id', $exeatRequest->id)
-        ->where('staff_id', $user->id)
-        ->where('role', $actingRole)
-        ->where('method', $exeatRequest->status)
-        ->exists();
-
-    if ($alreadyApproved) {
-        return response()->json(['message' => "You have already approved this request as '{$actingRole}'."], 409);
-    }
-
-    $validated = $request->validate(['comment' => 'nullable|string']);
-
-    DB::beginTransaction();
-    try {
-        $approval = ExeatApproval::create([
-            'exeat_request_id' => $exeatRequest->id,
-            'staff_id' => $user->id,
-            'status' => 'approved',
-            'comment' => $validated['comment'] ?? null,
-            'role' => $actingRole,
-            'method' => $exeatRequest->status,
-        ]);
-
-        $this->workflowService->approve($exeatRequest, $approval, $approval->comment);
-
-        DB::commit();
-    } catch (\Throwable $e) {
-        DB::rollBack();
-        return response()->json(['message' => 'Approval failed: ' . $e->getMessage()], 500);
-    }
-
-    return response()->json(['message' => 'Exeat request approved.', 'exeat_request' => $exeatRequest]);
-}
 
 
 
 
     public function reject(StaffExeatApprovalRequest $request, $id)
-{
-    $user = $request->user();
+    {
+        $user = $request->user();
 
-    if (!($user instanceof \App\Models\Staff)) {
-        return response()->json(['message' => 'Unauthorized.'], 403);
-    }
+        if (!($user instanceof \App\Models\Staff)) {
+            return response()->json(['message' => 'Unauthorized.'], 403);
+        }
 
-    $exeatRequest = ExeatRequest::with('student:id,fname,lname,passport')->find($id);
-    if (!$exeatRequest) {
-        return response()->json(['message' => 'Exeat request not found.'], 404);
-    }
+        $exeatRequest = ExeatRequest::with('student:id,fname,lname,passport')->find($id);
+        if (!$exeatRequest) {
+            return response()->json(['message' => 'Exeat request not found.'], 404);
+        }
 
-    $roleNames = $user->exeatRoles()->with('role')->get()->pluck('role.name')->toArray();
-    $allowedStatuses = $this->getAllowedStatuses($roleNames);
+        $roleNames = $user->exeatRoles()->with('role')->get()->pluck('role.name')->toArray();
+        $allowedStatuses = $this->getAllowedStatuses($roleNames);
 
-    if (!in_array($exeatRequest->status, $allowedStatuses)) {
-        return response()->json(['message' => 'You do not have permission to reject this request.'], 403);
-    }
+        if (!in_array($exeatRequest->status, $allowedStatuses)) {
+            return response()->json(['message' => 'You do not have permission to reject this request.'], 403);
+        }
 
-    // ✅ Determine acting role
-    $actingRole = $this->getActingRole($user, $exeatRequest->status);
+        // ✅ Determine acting role
+        $actingRole = $this->getActingRole($user, $exeatRequest->status);
 
-    // ✅ Prevent duplicate rejection for same role
-    $alreadyActed = ExeatApproval::where('exeat_request_id', $exeatRequest->id)
-        ->where('staff_id', $user->id)
-        ->where('role', $actingRole)
-        ->where('method', $exeatRequest->status)
-        ->exists();
+        // ✅ Prevent duplicate rejection for same role
+        $alreadyActed = ExeatApproval::where('exeat_request_id', $exeatRequest->id)
+            ->where('staff_id', $user->id)
+            ->where('role', $actingRole)
+            ->where('method', $exeatRequest->status)
+            ->exists();
 
-    if ($alreadyActed) {
-        return response()->json(['message' => "You have already taken action on this request as '{$actingRole}'."], 409);
-    }
+        if ($alreadyActed) {
+            return response()->json(['message' => "You have already taken action on this request as '{$actingRole}'."], 409);
+        }
 
-    $validated = $request->validate(['comment' => 'required|string']);
-    $workflow = $this->workflowService;
+        $validated = $request->validate(['comment' => 'required|string']);
+        $workflow = $this->workflowService;
 
-    DB::beginTransaction();
-    try {
-        $approval = ExeatApproval::create([
-            'exeat_request_id' => $exeatRequest->id,
-            'staff_id' => $user->id,
-            'status' => 'rejected',
-            'comment' => $validated['comment'],
-            'role' => $actingRole,
-            'method' => $exeatRequest->status,
-        ]);
-
-        $this->workflowService->reject($exeatRequest, $approval, $approval->comment);
-
-        DB::commit();
-    } catch (\Throwable $e) {
-        DB::rollBack();
-        return response()->json(['message' => 'Rejection failed: ' . $e->getMessage()], 500);
-    }
-
-    return response()->json(['message' => 'Exeat request rejected.', 'exeat_request' => $exeatRequest]);
-}
-
-
-  public function sendParentConsent(Request $request, $id)
-        {
-            $user = $request->user();
-            if (!($user instanceof \App\Models\Staff)) {
-                return response()->json(['message' => 'Unauthorized.'], 403);
-            }
-
-            $exeatRequest = ExeatRequest::with('student:id,fname,lname,passport')->find($id);
-            if (!$exeatRequest) {
-                return response()->json(['message' => 'Exeat request not found.'], 404);
-            }
-
-            // Optional: prevent triggering it at the wrong time
-            if ($exeatRequest->status !== 'parent_consent') {
-                return response()->json(['message' => 'Parent consent can only be sent at the parent_consent stage.'], 403);
-            }
-
-            $validated = $request->validate([
-                'method' => 'required|string',
-                'message' => 'nullable|string',
+        DB::beginTransaction();
+        try {
+            $approval = ExeatApproval::create([
+                'exeat_request_id' => $exeatRequest->id,
+                'staff_id' => $user->id,
+                'status' => 'rejected',
+                'comment' => $validated['comment'],
+                'role' => $actingRole,
+                'method' => $exeatRequest->status,
             ]);
 
-            $parentConsent = $this->workflowService->sendParentConsent($exeatRequest, $validated['method'], $validated['message'] ?? null, $user->id);
+            $this->workflowService->reject($exeatRequest, $approval, $approval->comment);
 
-            // Check notification status and provide appropriate response
-            $responseMessage = 'Parent consent request processed.';
-            $responseCode = 200;
-            
-            if (isset($parentConsent->notification_status)) {
-                switch ($parentConsent->notification_status) {
-                    case 'success':
-                        $responseMessage = 'Parent consent request sent successfully.';
-                        break;
-                    case 'no_email':
-                        $responseMessage = 'Parent consent request created, but no parent email address is available for email notification.';
-                        $responseCode = 422;
-                        break;
-                    case 'failed':
-                        $responseMessage = 'Parent consent request created, but notification delivery failed.';
-                        $responseCode = 422;
-                        break;
-                }
-            }
-
-            return response()->json([
-                'message' => $responseMessage,
-                'parent_consent' => $parentConsent,
-                'notification_status' => $parentConsent->notification_status ?? 'unknown',
-                'status_message' => $parentConsent->status_message ?? 'No status message available'
-            ], $responseCode);
+            DB::commit();
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            return response()->json(['message' => 'Rejection failed: ' . $e->getMessage()], 500);
         }
+
+        return response()->json(['message' => 'Exeat request rejected.', 'exeat_request' => $exeatRequest]);
+    }
+
+
+    public function sendParentConsent(Request $request, $id)
+    {
+        $user = $request->user();
+        if (!($user instanceof \App\Models\Staff)) {
+            return response()->json(['message' => 'Unauthorized.'], 403);
+        }
+
+        $exeatRequest = ExeatRequest::with('student:id,fname,lname,passport')->find($id);
+        if (!$exeatRequest) {
+            return response()->json(['message' => 'Exeat request not found.'], 404);
+        }
+
+        // Optional: prevent triggering it at the wrong time
+        if ($exeatRequest->status !== 'parent_consent') {
+            return response()->json(['message' => 'Parent consent can only be sent at the parent_consent stage.'], 403);
+        }
+
+        $validated = $request->validate([
+            'method' => 'required|string',
+            'message' => 'nullable|string',
+        ]);
+
+        $parentConsent = $this->workflowService->sendParentConsent($exeatRequest, $validated['method'], $validated['message'] ?? null, $user->id);
+
+        // Check notification status and provide appropriate response
+        $responseMessage = 'Parent consent request processed.';
+        $responseCode = 200;
+
+        if (isset($parentConsent->notification_status)) {
+            switch ($parentConsent->notification_status) {
+                case 'success':
+                    $responseMessage = 'Parent consent request sent successfully.';
+                    break;
+                case 'no_email':
+                    $responseMessage = 'Parent consent request created, but no parent email address is available for email notification.';
+                    $responseCode = 422;
+                    break;
+                case 'failed':
+                    $responseMessage = 'Parent consent request created, but notification delivery failed.';
+                    $responseCode = 422;
+                    break;
+            }
+        }
+
+        return response()->json([
+            'message' => $responseMessage,
+            'parent_consent' => $parentConsent,
+            'notification_status' => $parentConsent->notification_status ?? 'unknown',
+            'status_message' => $parentConsent->status_message ?? 'No status message available'
+        ], $responseCode);
+    }
 
     public function history(Request $request, $id)
     {
@@ -754,9 +774,18 @@ public function approve(StaffExeatApprovalRequest $request, $id)
 
         // Define all possible statuses in the exeat workflow
         $allStatuses = [
-            'pending', 'cmd_review', 'secretary_review', 'parent_consent',
-            'dean_review', 'hostel_signout', 'security_signout', 'security_signin',
-            'hostel_signin', 'completed', 'rejected', 'appeal'
+            'pending',
+            'cmd_review',
+            'secretary_review',
+            'parent_consent',
+            'dean_review',
+            'hostel_signout',
+            'security_signout',
+            'security_signin',
+            'hostel_signin',
+            'completed',
+            'rejected',
+            'appeal'
         ];
 
         // Map roles to their corresponding statuses that they handle
@@ -805,7 +834,7 @@ public function approve(StaffExeatApprovalRequest $request, $id)
 
             // Get requests that have audit logs showing they were at these statuses (passed through)
             $requestsFromAuditLogs = AuditLog::where('target_type', 'exeat_request')
-                ->where(function($query) use ($handledStatuses) {
+                ->where(function ($query) use ($handledStatuses) {
                     foreach ($handledStatuses as $status) {
                         $query->orWhere('details', 'like', "%to {$status}%");
                     }
@@ -831,9 +860,9 @@ public function approve(StaffExeatApprovalRequest $request, $id)
         $exeatRequests = ExeatRequest::whereIn('id', $allRequestIds)
             ->with([
                 'student:id,fname,lname,passport',
-                'approvals' => function($query) {
+                'approvals' => function ($query) {
                     $query->with('staff:id,fname,lname')
-                          ->orderBy('updated_at', 'desc');
+                        ->orderBy('updated_at', 'desc');
                 },
                 'approvals.staff:id,fname,lname'
             ])
@@ -851,8 +880,10 @@ public function approve(StaffExeatApprovalRequest $request, $id)
                     $request->acting_roles[] = $role;
                 } elseif (isset($roleStatusMap[$role])) {
                     foreach ($roleStatusMap[$role] as $status) {
-                        if ($request->status === $status ||
-                            (isset($request->status_history) && strpos($request->status_history, $status) !== false)) {
+                        if (
+                            $request->status === $status ||
+                            (isset($request->status_history) && strpos($request->status_history, $status) !== false)
+                        ) {
                             $request->acting_roles[] = $role;
                             break;
                         }
@@ -1037,20 +1068,20 @@ public function approve(StaffExeatApprovalRequest $request, $id)
     public function sendComment(Request $request, $id)
     {
         $user = $request->user();
-        
+
         if (!($user instanceof \App\Models\Staff)) {
             return response()->json(['message' => 'Unauthorized.'], 403);
         }
-        
+
         $exeatRequest = ExeatRequest::with('student:id,fname,lname,passport')->find($id);
         if (!$exeatRequest) {
             return response()->json(['message' => 'Exeat request not found.'], 404);
         }
-        
+
         $validated = $request->validate([
             'comment' => 'required|string|max:500',
         ]);
-        
+
         try {
             // Check if a comment notification has already been sent for the current status
             $currentStatus = $exeatRequest->status;
@@ -1058,7 +1089,7 @@ public function approve(StaffExeatApprovalRequest $request, $id)
                 ->where('notification_type', \App\Models\ExeatNotification::TYPE_STAFF_COMMENT)
                 ->where('data->status', $currentStatus)
                 ->first();
-                
+
             if ($existingComment) {
                 // Get the staff who sent the previous comment from audit log
                 $previousCommentLog = AuditLog::where('target_type', 'exeat_request')
@@ -1068,11 +1099,11 @@ public function approve(StaffExeatApprovalRequest $request, $id)
                     ->with('staff:id,fname,lname')
                     ->orderBy('timestamp', 'desc')
                     ->first();
-                
+
                 $previousStaffName = 'Unknown Staff';
                 $previousComment = 'Comment details not available';
                 $sentAt = $existingComment->created_at->format('M j, Y g:i A');
-                
+
                 if ($previousCommentLog && $previousCommentLog->staff) {
                     $previousStaffName = "{$previousCommentLog->staff->fname} {$previousCommentLog->staff->lname}";
                     // Extract comment from audit log details
@@ -1080,7 +1111,7 @@ public function approve(StaffExeatApprovalRequest $request, $id)
                         $previousComment = $matches[1];
                     }
                 }
-                
+
                 return response()->json([
                     'message' => 'A comment has already been sent for this exeat status. Please wait until the status changes to send another comment.',
                     'status' => $currentStatus,
@@ -1092,14 +1123,14 @@ public function approve(StaffExeatApprovalRequest $request, $id)
                     ]
                 ], 422);
             }
-            
+
             // Send notification to student
             $notifications = $this->notificationService->sendStaffCommentNotification(
                 $exeatRequest,
                 $user,
                 $validated['comment']
             );
-            
+
             // Create audit log
             AuditLog::create([
                 'target_type' => 'exeat_request',
@@ -1110,7 +1141,7 @@ public function approve(StaffExeatApprovalRequest $request, $id)
                 'details' => "Staff sent comment to student: {$validated['comment']}",
                 'timestamp' => now()
             ]);
-            
+
             return response()->json([
                 'message' => 'Comment sent to student successfully',
                 'notifications' => $notifications
@@ -1121,7 +1152,7 @@ public function approve(StaffExeatApprovalRequest $request, $id)
             ], 500);
         }
     }
-    
+
     public function rejectParentConsent(Request $request, $consentId)
     {
         $user = $request->user();
@@ -1268,21 +1299,21 @@ public function approve(StaffExeatApprovalRequest $request, $id)
     {
         // Set return date to 11:59 PM of the expected return date
         $returnDateEnd = $returnDate->copy()->setTime(23, 59, 59);
-        
+
         // If actual return is before or at 11:59 PM of return date, no debt
         if ($actualReturnTime->lte($returnDateEnd)) {
             return 0;
         }
-        
+
         // Calculate full 24-hour periods after 11:59 PM of return date
         $daysPassed = 0;
         $currentCheckDate = $returnDateEnd->copy();
-        
+
         while ($currentCheckDate->lt($actualReturnTime)) {
             $currentCheckDate->addDay()->setTime(23, 59, 59);
             $daysPassed++;
         }
-        
+
         return $daysPassed;
     }
 }
