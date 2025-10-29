@@ -11,9 +11,12 @@ use App\Http\Controllers\BirthdayController;
 use Illuminate\Http\Request;
 use App\Services\ExeatNotificationService;
 use App\Services\UrlShortenerService;
-use App\Models\User;
 use App\Models\ExeatRequest;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Redirect;
+use Illuminate\Support\Facades\View;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Foundation\Auth\User;
 
 Route::get('/send-specific-birthday', [BirthdayController::class, 'sendBirthdayEmailToSpecificUsers']);
 
@@ -73,10 +76,10 @@ Route::get('/test-notifications', function (Request $request) {
         }
 
         // Test notification service
-        $notificationService = new ExeatNotificationService();
+        // $notificationService = new ExeatNotificationService();
 
         // Send a test stage change notification
-        $notificationService->sendStageChangeNotification($exeatRequest, $student);
+        // $notificationService->sendStageChangeNotification($exeatRequest, $student);
 
         // Check new count
         $finalCount = DB::table('exeat_notifications')->count();

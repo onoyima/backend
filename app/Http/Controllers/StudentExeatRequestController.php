@@ -43,16 +43,16 @@ class StudentExeatRequestController extends Controller
         // Get category to check if it's holiday (skip debt checks for holiday)
         // Only allow active categories
         $category = ExeatCategory::where('id', $validated['category_id'])
-                                 ->where('status', 'active')
-                                 ->first();
-        
+            ->where('status', 'active')
+            ->first();
+
         if (!$category) {
             return response()->json([
                 'message' => 'Invalid or inactive category selected.',
                 'errors' => ['category_id' => ['The selected category is not available.']]
             ], 422);
         }
-        
+
         $isHolidayCategory = strtolower($category->name) === 'holiday';
 
         // Check for unpaid exeat debts (skip for holiday category)
@@ -111,7 +111,7 @@ class StudentExeatRequestController extends Controller
         }
         // Use already retrieved category and determine medical status and initial status
         $isMedical = in_array(strtolower($category->name), ['medical', 'daily_medical']);
-        
+
         // Determine initial status based on category
         if ($isMedical) {
             $initialStatus = 'cmd_review';
@@ -169,38 +169,38 @@ class StudentExeatRequestController extends Controller
 
 
     // GET /api/student/profile
-public function profile(Request $request)
-{
-    $user = $request->user();
+    public function profile(Request $request)
+    {
+        $user = $request->user();
 
-    $studentAcademic = StudentAcademic::where('student_id', $user->id)->first();
-    $studentContact = StudentContact::where('student_id', $user->id)->first();
-    $accommodationHistory = VunaAccomodationHistory::getCurrentAccommodationForStudent($user->id);
+        $studentAcademic = StudentAcademic::where('student_id', $user->id)->first();
+        $studentContact = StudentContact::where('student_id', $user->id)->first();
+        $accommodationHistory = VunaAccomodationHistory::getCurrentAccommodationForStudent($user->id);
 
-    $accommodation = null;
-    if ($accommodationHistory && $accommodationHistory->accommodation) {
-        $accommodation = $accommodationHistory->accommodation->name;
+        $accommodation = null;
+        if ($accommodationHistory && $accommodationHistory->accommodation) {
+            $accommodation = $accommodationHistory->accommodation->name;
+        }
+
+        return response()->json([
+            'profile' => [
+                'matric_no' => $studentAcademic?->matric_no,
+                'parent_surname' => $studentContact?->surname,
+                'parent_othernames' => $studentContact?->other_names,
+                'parent_phone_no' => $studentContact?->phone_no,
+                'parent_phone_no_two' => $studentContact?->phone_no_two,
+                'parent_email' => $studentContact?->email,
+                'student_accommodation' => $accommodation,
+            ]
+        ]);
     }
 
-    return response()->json([
-        'profile' => [
-            'matric_no' => $studentAcademic?->matric_no,
-            'parent_surname' => $studentContact?->surname,
-            'parent_othernames' => $studentContact?->other_names,
-            'parent_phone_no' => $studentContact?->phone_no,
-            'parent_phone_no_two' => $studentContact?->phone_no_two,
-            'parent_email' => $studentContact?->email,
-            'student_accommodation' => $accommodation,
-        ]
-    ]);
-}
-
-public function categories()
-{
-    return response()->json([
-        'categories' => ExeatCategory::where('status', 'active')->get(['id', 'name', 'description'])
-    ]);
-}
+    public function categories()
+    {
+        return response()->json([
+            'categories' => ExeatCategory::where('status', 'active')->get(['id', 'name', 'description'])
+        ]);
+    }
 
     // GET /api/student/exeat-requests
     public function index(Request $request)

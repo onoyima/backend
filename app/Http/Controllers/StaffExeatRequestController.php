@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Log;
 use App\Services\ExeatWorkflowService;
 use App\Http\Requests\StaffExeatApprovalRequest;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Auth;
 
 class StaffExeatRequestController extends Controller
 {
@@ -182,6 +183,11 @@ class StaffExeatRequestController extends Controller
             $query->where('status', $request->input('status'));
         }
 
+        // Optional filter: search by student_id
+        if ($request->has('student_id')) {
+            $query->where('student_id', $request->input('student_id'));
+        }
+
         // Commented out pagination for now
         /*
         // Add pagination with configurable per_page parameter
@@ -205,7 +211,7 @@ class StaffExeatRequestController extends Controller
         */
 
         // Fetch all records without pagination
-        $exeatRequests = $query->orderBy('created_at', 'desc')->get();
+        $exeatRequests = $query->orderBy('created_at', 'ASC')->get();
 
         return response()->json([
             'exeat_requests' => $exeatRequests,
@@ -472,7 +478,7 @@ class StaffExeatRequestController extends Controller
 
                 // Create audit log for debt update
                 AuditLog::create([
-                    'staff_id' => auth()->id(),
+                    'staff_id' => Auth::id(),
                     'student_id' => $exeat->student_id,
                     'action' => 'debt_updated_by_staff',
                     'target_type' => 'student_exeat_debt',
@@ -484,7 +490,7 @@ class StaffExeatRequestController extends Controller
                         'old_amount' => $oldAmount,
                         'return_date' => $exeat->return_date,
                         'actual_return_date' => $exeat->actual_return_date,
-                        'updated_by' => auth()->id()
+                        'updated_by' => Auth::id()
                     ]),
                     'timestamp' => now(),
                 ]);
@@ -499,7 +505,7 @@ class StaffExeatRequestController extends Controller
 
                 // Create audit log for debt creation
                 AuditLog::create([
-                    'staff_id' => auth()->id(),
+                    'staff_id' => Auth::id(),
                     'student_id' => $exeat->student_id,
                     'action' => 'debt_created_by_staff',
                     'target_type' => 'student_exeat_debt',
@@ -510,7 +516,7 @@ class StaffExeatRequestController extends Controller
                         'amount' => $amount,
                         'return_date' => $exeat->return_date,
                         'actual_return_date' => $exeat->actual_return_date,
-                        'created_by' => auth()->id()
+                        'created_by' => Auth::id()
                     ]),
                     'timestamp' => now(),
                 ]);
@@ -522,7 +528,7 @@ class StaffExeatRequestController extends Controller
             foreach ($deletedDebts as $deletedDebt) {
                 // Create audit log for debt removal
                 AuditLog::create([
-                    'staff_id' => auth()->id(),
+                    'staff_id' => Auth::id(),
                     'student_id' => $exeat->student_id,
                     'action' => 'debt_removed_by_staff',
                     'target_type' => 'student_exeat_debt',
@@ -533,7 +539,7 @@ class StaffExeatRequestController extends Controller
                         'reason' => 'Student returned on time after staff update',
                         'return_date' => $exeat->return_date,
                         'actual_return_date' => $exeat->actual_return_date,
-                        'removed_by' => auth()->id()
+                        'removed_by' => Auth::id()
                     ]),
                     'timestamp' => now(),
                 ]);
