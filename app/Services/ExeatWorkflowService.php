@@ -1098,14 +1098,14 @@ EOT;
         }
 
         // Only send email if preferred contact mode is email
-        if ($exeat->preferred_mode_of_contact !== 'email') {
-            Log::info('Parent notification skipped - preferred contact mode is not email', [
-                'exeat_id' => $exeat->id,
-                'preferred_mode' => $exeat->preferred_mode_of_contact,
-                'action' => $action
-            ]);
-            return;
-        }
+        // if ($exeat->preferred_mode_of_contact !== 'email') {
+        //     Log::info('Parent notification skipped - preferred contact mode is not email', [
+        //         'exeat_id' => $exeat->id,
+        //         'preferred_mode' => $exeat->preferred_mode_of_contact,
+        //         'action' => $action
+        //     ]);
+        //     return;
+        // }
 
         $student = $exeat->student;
         $studentName = $student ? "{$student->fname} {$student->lname}" : 'Student';
@@ -1114,7 +1114,10 @@ EOT;
 
         $subject = "Student Security {$action} - {$studentName}";
         $message = sprintf(
-            "Dear Parent/Guardian,\n\nThis is to inform you that your ward %s (Matric No: %s) has been signed %s by Security on %s.\n\nExeat Details:\n- Reason: %s\n- Destination: %s\n- Expected Return: %s\n\nIf you have any concerns, please contact the university immediately.\n\nThank you.\n\n— VERITAS University Security Department",
+            // "Dear Parent/Guardian,\n\nThis is to inform you that your ward %s (Matric No: %s) has been signed %s by Security on %s.\n\nExeat Details:\n- Reason: %s\n- Destination: %s\n- Expected Return: %s\n\nIf you have any concerns, please contact the university immediately.\n\nThank you.\n\n— VERITAS University Security Department",
+             "This is to inform you that your ward %s (Matric No: %s) has been signed %s by Security on %s.\n\n   
+             ",
+
             $studentName,
             $matricNo,
             $action,
