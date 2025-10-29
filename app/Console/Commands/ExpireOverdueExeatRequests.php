@@ -65,11 +65,11 @@ class ExpireOverdueExeatRequests extends Command
             
             if (!$isDryRun) {
                 // Update the request to expired status
-                $request->update([
-                    'is_expired' => true,
-                    'expired_at' => now(),
-                    'status' => 'completed' // Mark as completed with expired flag
-                ]);
+                // $request->update([
+                //     'is_expired' => true,
+                //     'expired_at' => now(),
+                //     'status' => 'completed' // Mark as completed with expired flag
+                // ]);
                 
                 // Log the expiration
                 Log::info('Exeat request expired automatically (departure-based)', [
