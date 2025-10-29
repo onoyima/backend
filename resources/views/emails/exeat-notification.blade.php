@@ -233,10 +233,10 @@
                     {{ $notification->exeatRequest->matric_no }}
                 </div>
 
-                <div class="detail-row">
+                {{-- <div class="detail-row">
                     <span class="detail-label">Current Status:</span>
                     <span style="text-transform: capitalize;">{{ str_replace('_', ' ', $notification->exeatRequest->status) }}</span>
-                </div>
+                </div> --}}
 
                 <div class="detail-row">
                     <span class="detail-label">Reason:</span>
@@ -258,10 +258,14 @@
                     {{ \Carbon\Carbon::parse($notification->exeatRequest->return_date)->format('M d, Y') }}
                 </div>
 
+@if($notification->exeatRequest->is_medical)
                 <div class="detail-row">
                     <span class="detail-label">Request Type:</span>
-                    {{ $notification->exeatRequest->is_medical ? 'Medical' : 'Non-Medical' }}
+                    Medical
                 </div>
+@else
+                <div></div>
+@endif
             </div>
             @endif
 
@@ -273,7 +277,7 @@
 
             <p>
                 Best regards,<br />
-                <strong>VERITAS University Exeat Management System</strong>
+                <strong>Veritas University Exeat Management System</strong>
             </p>
         </div>
 
