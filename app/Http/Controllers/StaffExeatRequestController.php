@@ -174,18 +174,22 @@ class StaffExeatRequestController extends Controller
             return response()->json(['message' => 'No access to exeat requests.'], 403);
         }
 
-        $query = ExeatRequest::query()->with('student:id,fname,lname,passport,phone')->whereIn('status', $allowedStatuses);
+        // Optional filter: search by student_id – if provided, ignore status restrictions
+        if ($request->has('student_id')) {
+            $query = ExeatRequest::query()
+                ->with('student:id,fname,lname,passport,phone')
+                ->where('student_id', $request->input('student_id'));
+        } else {
+            $query = ExeatRequest::query()
+                ->with('student:id,fname,lname,passport,phone')
+                ->whereIn('status', $allowedStatuses);
+        }
 
         // Apply hostel-based filtering for hostel admins
         $query = $this->applyHostelFiltering($query, $user, $roleNames);
 
         if ($request->has('status')) {
             $query->where('status', $request->input('status'));
-        }
-
-        // Optional filter: search by student_id
-        if ($request->has('student_id')) {
-            $query->where('student_id', $request->input('student_id'));
         }
 
         // Commented out pagination for now
