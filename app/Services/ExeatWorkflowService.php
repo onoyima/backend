@@ -11,7 +11,8 @@ use App\Models\HostelSignout;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Http;
-use Twilio\Rest\Client;
+use Twilio\Rest\Client as TwilioClient;
+use Twilio\Exceptions\TwilioException;
 use Carbon\Carbon;
 use App\Services\ExeatNotificationService;
 use App\Services\NotificationDeliveryService;
@@ -664,21 +665,21 @@ class ExeatWorkflowService
             // Format phone number using PhoneUtility
             $formattedTo = \App\Utils\PhoneUtility::formatForSMS($to);
 
-            $client = new Client($sid, $token);
+            $client = new TwilioClient($sid, $token);
             $result = $client->messages->create($formattedTo, [
                 'from' => $from,
                 'body' => $message,
             ]);
 
-            \Log::info("SMS sent successfully", [
+            Log::info("SMS sent successfully", [
                 'original_to' => $to,
                 'formatted_to' => $formattedTo,
                 'message_sid' => $result->sid,
                 'status' => $result->status
             ]);
 
-        } catch (\Twilio\Exceptions\TwilioException $e) {
-            \Log::error("Twilio SMS API error", [
+        } catch (TwilioException $e) {
+            Log::error("Twilio SMS API error", [
                 'original_to' => $to,
                 'formatted_to' => isset($formattedTo) ? $formattedTo : $to,
                 'error_code' => $e->getCode(),
@@ -686,7 +687,7 @@ class ExeatWorkflowService
                 'twilio_error_code' => method_exists($e, 'getErrorCode') ? $e->getErrorCode() : null
             ]);
         } catch (\Exception $e) {
-            \Log::error("Failed to send SMS message", [
+            Log::error("Failed to send SMS message", [
                 'original_to' => $to,
                 'formatted_to' => isset($formattedTo) ? $formattedTo : $to,
                 'error' => $e->getMessage(),
@@ -708,20 +709,20 @@ class ExeatWorkflowService
             $result = $whatsAppService->sendMessage($to, $message);
 
             if ($result['success']) {
-                \Log::info("WhatsApp message sent successfully", [
+                Log::info("WhatsApp message sent successfully", [
                     'to' => $to,
                     'message_sid' => $result['message_sid'] ?? null,
                     'status' => $result['status'] ?? null
                 ]);
             } else {
-                \Log::error("WhatsApp message failed", [
+                Log::error("WhatsApp message failed", [
                     'to' => $to,
                     'error_code' => $result['error_code'] ?? null,
                     'error_message' => $result['error'] ?? 'Unknown error'
                 ]);
             }
         } catch (\Exception $e) {
-            \Log::error("Failed to send WhatsApp message", [
+            Log::error("Failed to send WhatsApp message", [
                 'to' => $to,
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
@@ -904,18 +905,20 @@ EOT;
 
         $returnDate = \Carbon\Carbon::parse($exeatRequest->return_date);
         $actualReturnTime = now();
+        
+        // Calculate debt using exact 24-hour periods at 11:59 PM
+        $daysOverdue = $this->calculateDaysOverdue($returnDate, $actualReturnTime);
+        $debtAmount = $daysOverdue * 10000;
 
-        Log::info('DEBUG: Time comparison', [
+        Log::info('DEBUG: Time comparison and overdue calculation', [
             'return_date_parsed' => $returnDate->toDateTimeString(),
             'actual_return_time' => $actualReturnTime->toDateTimeString(),
-            'is_late' => $actualReturnTime->gt($returnDate)
+            'days_overdue' => $daysOverdue,
+            'is_late' => $daysOverdue > 0
         ]);
 
-        // Check if student is returning late
-        if ($actualReturnTime->gt($returnDate)) {
-            // Calculate debt using exact 24-hour periods at 11:59 PM
-            $daysOverdue = $this->calculateDaysOverdue($returnDate, $actualReturnTime);
-            $debtAmount = $daysOverdue * 10000;
+        // Only create debt when at least one full overdue day has passed
+        if ($daysOverdue > 0) {
 
             // Check if debt already exists for this exeat
             $existingDebt = \App\Models\StudentExeatDebt::where('exeat_request_id', $exeatRequest->id)
@@ -976,6 +979,12 @@ EOT;
                     'debt_amount' => $debtAmount
                 ]);
             }
+        } else {
+            Log::info('DEBUG: No debt created - student returned on time for debt calculation window', [
+                'exeat_id' => $exeatRequest->id,
+                'student_id' => $exeatRequest->student_id,
+                'days_overdue' => $daysOverdue,
+            ]);
         }
     }
 

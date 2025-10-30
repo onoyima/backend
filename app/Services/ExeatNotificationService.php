@@ -21,6 +21,54 @@ class ExeatNotificationService
     }
 
     /**
+     * Send notification to the student when a special dean override is applied.
+     */
+    public function sendSpecialOverrideNotification(
+        ExeatRequest $exeatRequest,
+        string $overrideReason,
+        ?string $emergencyContact = null,
+        ?string $specialInstructions = null
+    ): void {
+        try {
+            $title = 'Special Dean Override Applied';
+            $message = 'A special override has been applied to your exeat request.';
+
+            if (!empty($overrideReason)) {
+                $message .= " Reason: {$overrideReason}.";
+            }
+            if (!empty($emergencyContact)) {
+                $message .= " Emergency contact: {$emergencyContact}.";
+            }
+            if (!empty($specialInstructions)) {
+                $message .= " Instructions: {$specialInstructions}.";
+            }
+
+            $data = [
+                'override_reason' => $overrideReason,
+                'emergency_contact' => $emergencyContact,
+                'special_instructions' => $specialInstructions,
+                'is_dean_override' => true,
+                'current_status' => $exeatRequest->status,
+            ];
+
+            $this->createNotification(
+                $exeatRequest,
+                [['type' => 'App\\Models\\Student', 'id' => $exeatRequest->student_id]],
+                'special_override',
+                $title,
+                $message,
+                \App\Models\ExeatNotification::PRIORITY_HIGH,
+                $data
+            );
+        } catch (\Exception $e) {
+            Log::error('Failed to send special override notification', [
+                'exeat_id' => $exeatRequest->id,
+                'error' => $e->getMessage()
+            ]);
+        }
+    }
+
+    /**
      * Send notification about exeat request modification.
      */
     public function sendExeatModifiedNotification(ExeatRequest $exeatRequest, string $message): void
