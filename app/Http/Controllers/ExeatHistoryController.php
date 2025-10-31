@@ -178,7 +178,7 @@ class ExeatHistoryController extends Controller
         }
 
         $validated = $request->validate([
-            // 'per_page' => 'integer|min:1|max:100',
+            'per_page' => 'integer|min:1|max:100',
             'date_from' => 'date',
             'date_to' => 'date|after_or_equal:date_from',
             'student_name' => 'string|max:255',
@@ -188,7 +188,7 @@ class ExeatHistoryController extends Controller
             'sort_order' => 'string|in:asc,desc'
         ]);
 
-        // $perPage = $validated['per_page'] ?? 20;
+        $perPage = $validated['per_page'] ?? 50;
         $sortBy = $validated['sort_by'] ?? 'created_at';
         $sortOrder = $validated['sort_order'] ?? 'desc';
 
@@ -232,12 +232,12 @@ class ExeatHistoryController extends Controller
             $query->where('is_medical', $validated['is_medical']);
         }
 
-        // $exeats = $query->paginate($perPage);
-        $exeats = $query->get();
+         $exeats = $query->paginate($perPage);
+        // $exeats = $query->get();
 
         // Transform the data
-        // $exeats->getCollection()->transform(function ($exeat) {
-        $exeats->transform(function ($exeat) {
+         $exeats->getCollection()->transform(function ($exeat) {
+        // $exeats->transform(function ($exeat) {
             return [
                 'id' => $exeat->id,
                 'student' => $exeat->student ? [
@@ -283,14 +283,14 @@ class ExeatHistoryController extends Controller
         return response()->json([
             'success' => true,
             'data' => $exeats,
-            // 'pagination' => [
-            //     'current_page' => $exeats->currentPage(),
-            //     'last_page' => $exeats->lastPage(),
-            //     'per_page' => $exeats->perPage(),
-            //     'total' => $exeats->total(),
-            //     'from' => $exeats->firstItem(),
-            //     'to' => $exeats->lastItem()
-            // ],
+            'pagination' => [
+                'current_page' => $exeats->currentPage(),
+                'last_page' => $exeats->lastPage(),
+                'per_page' => $exeats->perPage(),
+                'total' => $exeats->total(),
+                'from' => $exeats->firstItem(),
+                'to' => $exeats->lastItem()
+            ],
             'status_summary' => [
                 'status' => $status,
                 'total_count' => $exeats->count(),

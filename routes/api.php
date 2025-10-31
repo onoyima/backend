@@ -96,6 +96,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // Student routes
     Route::prefix('student')->group(function () {
         Route::get('/exeat-requests', [StudentExeatRequestController::class, 'index']);
+        Route::get('/exeat-requests/comments', [StudentExeatRequestController::class, 'comments']);
         Route::post('/exeat-requests', [StudentExeatRequestController::class, 'store']);
         Route::get('/exeat-requests/{id}', [StudentExeatRequestController::class, 'show']);
         Route::get('/exeat-requests/{id}/history', [StudentExeatRequestController::class, 'history']);

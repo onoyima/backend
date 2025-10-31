@@ -198,7 +198,7 @@ class StaffExeatRequestController extends Controller
         $perPage = $request->get('per_page', 20); // Default 20 items per page
         $perPage = min($perPage, 100); // Maximum 100 items per page
         
-        $exeatRequests = $query->orderBy('created_at', 'desc')->paginate($perPage);
+        $exeatRequests = $query->orderBy('departure_date', 'asc')->paginate($perPage);
 
         return response()->json([
             'exeat_requests' => $exeatRequests->items(),
@@ -215,7 +215,7 @@ class StaffExeatRequestController extends Controller
         */
 
         // Fetch all records without pagination
-        $exeatRequests = $query->orderBy('created_at', 'ASC')->get();
+        $exeatRequests = $query->orderBy('departure_date', 'asc')->get();
 
         return response()->json([
             'exeat_requests' => $exeatRequests,

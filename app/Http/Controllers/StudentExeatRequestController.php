@@ -213,6 +213,41 @@ class StudentExeatRequestController extends Controller
         return response()->json(['exeat_requests' => $exeats]);
     }
 
+    // GET /api/student/exeat-requests/comments
+    public function comments(Request $request)
+    {
+        $user = $request->user();
+        $exeats = ExeatRequest::where('student_id', $user->id)
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        $data = $exeats->map(function ($exeat) {
+            $status = $exeat->status;
+
+            $commentForStatus = ExeatNotification::where('exeat_request_id', $exeat->id)
+                ->where('notification_type', ExeatNotification::TYPE_STAFF_COMMENT)
+                ->where('data->status', $status)
+                ->orderBy('created_at', 'desc')
+                ->first();
+
+            if (!$commentForStatus) {
+                return null; // No comment for this status; exclude
+            }
+
+            $rawComment = $commentForStatus->data['raw_comment'] ?? null;
+            if ($rawComment === null || $rawComment === '') {
+                return null; // Exclude null/empty comment entries
+            }
+
+            return [
+                'status' => $status,
+                'raw_comment' => $rawComment,
+            ];
+        })->filter()->values();
+
+        return response()->json(['comments' => $data]);
+    }
+
     // GET /api/student/exeat-requests/{id}
     public function show(Request $request, $id)
     {
