@@ -161,66 +161,57 @@ class StaffExeatRequestController extends Controller
 
     public function index(Request $request)
     {
-        $user = $request->user();
+        try {
+            $user = $request->user();
 
-        if (!($user instanceof \App\Models\Staff)) {
-            return response()->json(['message' => 'Unauthorized.'], 403);
+            if (!($user instanceof \App\Models\Staff)) {
+                return response()->json(['message' => 'Unauthorized.'], 403);
+            }
+
+            $roleNames = $user->exeatRoles()->with('role')->get()->pluck('role.name')->toArray();
+            $allowedStatuses = $this->getAllowedStatuses($roleNames);
+
+            if (empty($allowedStatuses) && !$request->has('student_id')) {
+                return response()->json(['message' => 'No access to exeat requests.'], 403);
+            }
+
+            // Optional filter: search by student_id – if provided, ignore status restrictions
+            if ($request->has('student_id')) {
+                $query = ExeatRequest::query()
+                    ->with('student:id,fname,lname,passport,phone')
+                    ->where('student_id', $request->input('student_id'));
+            } else {
+                $query = ExeatRequest::query()
+                    ->with('student:id,fname,lname,passport,phone')
+                    ->whereIn('status', $allowedStatuses);
+            }
+
+            // Apply hostel-based filtering for hostel admins
+            $query = $this->applyHostelFiltering($query, $user, $roleNames);
+
+            if ($request->has('status')) {
+                $query->where('status', $request->input('status'));
+            }
+
+            // Fetch all records without pagination
+            $exeatRequests = $query->orderBy('departure_date', 'asc')->get();
+
+            return response()->json([
+                'exeat_requests' => $exeatRequests,
+                'pagination' => null
+            ]);
+        } catch (\Throwable $e) {
+            \Log::error('StaffExeatRequestController@index failed', [
+                'error' => $e->getMessage(),
+                'query_params' => $request->all(),
+                'user_id' => optional($request->user())->id
+            ]);
+            return response()->json([
+                'exeat_requests' => [],
+                'pagination' => null,
+                'message' => 'Server Error'
+            ], 200);
         }
-
-        $roleNames = $user->exeatRoles()->with('role')->get()->pluck('role.name')->toArray();
-        $allowedStatuses = $this->getAllowedStatuses($roleNames);
-
-        if (empty($allowedStatuses)) {
-            return response()->json(['message' => 'No access to exeat requests.'], 403);
-        }
-
-        // Optional filter: search by student_id – if provided, ignore status restrictions
-        if ($request->has('student_id')) {
-            $query = ExeatRequest::query()
-                ->with('student:id,fname,lname,passport,phone')
-                ->where('student_id', $request->input('student_id'));
-        } else {
-            $query = ExeatRequest::query()
-                ->with('student:id,fname,lname,passport,phone')
-                ->whereIn('status', $allowedStatuses);
-        }
-
-        // Apply hostel-based filtering for hostel admins
-        $query = $this->applyHostelFiltering($query, $user, $roleNames);
-
-        if ($request->has('status')) {
-            $query->where('status', $request->input('status'));
-        }
-
-        // Commented out pagination for now
-        /*
-        // Add pagination with configurable per_page parameter
-        $perPage = $request->get('per_page', 20); // Default 20 items per page
-        $perPage = min($perPage, 100); // Maximum 100 items per page
-        
-        $exeatRequests = $query->orderBy('departure_date', 'asc')->paginate($perPage);
-
-        return response()->json([
-            'exeat_requests' => $exeatRequests->items(),
-            'pagination' => [
-                'current_page' => $exeatRequests->currentPage(),
-                'last_page' => $exeatRequests->lastPage(),
-                'per_page' => $exeatRequests->perPage(),
-                'total' => $exeatRequests->total(),
-                'from' => $exeatRequests->firstItem(),
-                'to' => $exeatRequests->lastItem(),
-                'has_more_pages' => $exeatRequests->hasMorePages()
-            ]
-        ]);
-        */
-
-        // Fetch all records without pagination
-        $exeatRequests = $query->orderBy('departure_date', 'asc')->get();
-
-        return response()->json([
-            'exeat_requests' => $exeatRequests,
-            'pagination' => null
-        ]);
     }
 
     public function dashboard(Request $request)
