@@ -95,7 +95,7 @@ class ExeatWorkflowService
         return $exeatRequest;
     }
 
-  protected function advanceStage(ExeatRequest $exeatRequest)
+    protected function advanceStage(ExeatRequest $exeatRequest)
     {
         $oldStatus = $exeatRequest->status;
 
@@ -202,8 +202,8 @@ class ExeatWorkflowService
         }
 
         // ✅ Automatically trigger parent consent mail
-    if ($exeatRequest->status === 'parent_consent') {
-        $staffId = $exeatRequest->approvals()->latest()->first()->staff_id ?? null;
+        if ($exeatRequest->status === 'parent_consent') {
+            $staffId = $exeatRequest->approvals()->latest()->first()->staff_id ?? null;
 
             $this->sendParentConsent($exeatRequest, $exeatRequest->preferred_mode_of_contact ?? 'email', null, $staffId);
         }
@@ -240,8 +240,8 @@ class ExeatWorkflowService
         $studentName  = $student ? "{$student->fname} {$student->lname}" : '';
         $reason       = $exeatRequest->reason;
 
-        $linkApprove  = $this->urlShortenerService->shortenUrl(url('/api/parent/consent/'.$parentConsent->consent_token.'/approve'));
-        $linkReject   = $this->urlShortenerService->shortenUrl(url('/api/parent/consent/'.$parentConsent->consent_token.'/decline'));
+        $linkApprove  = $this->urlShortenerService->shortenUrl(url('/api/parent/consent/' . $parentConsent->consent_token . '/approve'));
+        $linkReject   = $this->urlShortenerService->shortenUrl(url('/api/parent/consent/' . $parentConsent->consent_token . '/decline'));
 
         $expiryText = $expiresAt->format('F j, Y g:i A');
 
@@ -677,7 +677,6 @@ class ExeatWorkflowService
                 'message_sid' => $result->sid,
                 'status' => $result->status
             ]);
-
         } catch (TwilioException $e) {
             Log::error("Twilio SMS API error", [
                 'original_to' => $to,
@@ -743,6 +742,14 @@ class ExeatWorkflowService
      */
     private function sendTemplatedEmail($email, $recipientName, $subject, $message, $exeatRequest, $priority = 'medium')
     {
+        // Validate email before attempting to send
+        if (!is_string($email) || trim($email) === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            \Log::warning('Skipped sending templated email due to invalid or missing email', [
+                'email' => $email,
+                'subject' => $subject
+            ]);
+            return;
+        }
         try {
             // Create a notification-like object for the template
             $notification = (object) [
@@ -781,7 +788,7 @@ class ExeatWorkflowService
             ]);
             throw $e;
         }
-    }
+    }fix
 
     /**
      * Send parent consent email with approve/reject URLs
@@ -832,39 +839,39 @@ class ExeatWorkflowService
 
     protected function triggerVoiceCall(string $to, string $message)
     {
-    // Optional: Replace this with Twilio Voice API
-    \Log::info("Simulated call to $to with message: $message");
-}
-
-
-protected function sendApprovalNotificationForStage(ExeatRequest $exeatRequest)
-{
-    $roleMap = [
-        'cmd_review' => 'cmd',
-        'secretary_review' => 'secretary',
-        'dean_review' => 'dean',
-        'hostel_signout' => 'hostel_admin',
-        'security_signout' => 'security',
-        'security_signin' => 'security',
-        'hostel_signin' => 'hostel_admin'
-    ];
-
-    if (isset($roleMap[$exeatRequest->status])) {
-        $role = $roleMap[$exeatRequest->status];
-        $this->notificationService->sendApprovalRequiredNotification($exeatRequest, $role);
-    }
-}
-
-protected function notifyStudentStatusChange(ExeatRequest $exeatRequest)
-{
-    $student = $exeatRequest->student;
-
-    if (!$student || !$student->username) {
-        \Log::warning("No email available for student ID {$exeatRequest->student_id}");
-        return;
+        // Optional: Replace this with Twilio Voice API
+        \Log::info("Simulated call to $to with message: $message");
     }
 
-    $message = <<<EOT
+
+    protected function sendApprovalNotificationForStage(ExeatRequest $exeatRequest)
+    {
+        $roleMap = [
+            'cmd_review' => 'cmd',
+            'secretary_review' => 'secretary',
+            'dean_review' => 'dean',
+            'hostel_signout' => 'hostel_admin',
+            'security_signout' => 'security',
+            'security_signin' => 'security',
+            'hostel_signin' => 'hostel_admin'
+        ];
+
+        if (isset($roleMap[$exeatRequest->status])) {
+            $role = $roleMap[$exeatRequest->status];
+            $this->notificationService->sendApprovalRequiredNotification($exeatRequest, $role);
+        }
+    }
+
+    protected function notifyStudentStatusChange(ExeatRequest $exeatRequest)
+    {
+        $student = $exeatRequest->student;
+
+        if (!$student || !$student->username) {
+            \Log::warning("No email available for student ID {$exeatRequest->student_id}");
+            return;
+        }
+
+        $message = <<<EOT
 Dear {$student->fname} {$student->lname},
 
 Your exeat request status has changed.
@@ -877,18 +884,18 @@ Thank you.
 — VERITAS University Exeat Management System
 EOT;
 
-    try {
-        $this->sendTemplatedEmail(
-            $student->username, // Email is stored in 'username' field
-            $student->fname . ' ' . $student->lname,
-            'Exeat Request Status Updated',
-            $message,
-            $exeatRequest
-        );
-    } catch (\Exception $e) {
-        Log::error('Failed to send status update email', ['error' => $e->getMessage()]);
+        try {
+            $this->sendTemplatedEmail(
+                $student->username, // Email is stored in 'username' field
+                $student->fname . ' ' . $student->lname,
+                'Exeat Request Status Updated',
+                $message,
+                $exeatRequest
+            );
+        } catch (\Exception $e) {
+            Log::error('Failed to send status update email', ['error' => $e->getMessage()]);
+        }
     }
-}
 
     /**
      * Check if student is returning late and create overdue debt
@@ -905,7 +912,7 @@ EOT;
 
         $returnDate = \Carbon\Carbon::parse($exeatRequest->return_date);
         $actualReturnTime = now();
-        
+
         // Calculate debt using exact 24-hour periods at 11:59 PM
         $daysOverdue = $this->calculateDaysOverdue($returnDate, $actualReturnTime);
         $debtAmount = $daysOverdue * 10000;
@@ -1124,7 +1131,7 @@ EOT;
         $subject = "Student Security {$action} - {$studentName}";
         $message = sprintf(
             // "Dear Parent/Guardian,\n\nThis is to inform you that your ward %s (Matric No: %s) has been signed %s by Security on %s.\n\nExeat Details:\n- Reason: %s\n- Destination: %s\n- Expected Return: %s\n\nIf you have any concerns, please contact the university immediately.\n\nThank you.\n\n— VERITAS University Security Department",
-             "This is to inform you that your ward %s (Matric No: %s) has been signed %s by Security on %s.\n\n   
+            "This is to inform you that your ward %s (Matric No: %s) has been signed %s by Security on %s.\n\n   
              ",
 
             $studentName,
@@ -1192,7 +1199,6 @@ EOT;
                     'new_status' => $exeatRequest->status
                 ];
                 $successCount++;
-
             } catch (\Exception $e) {
                 $results[$exeatId] = [
                     'success' => false,
@@ -1255,7 +1261,6 @@ EOT;
                     'new_status' => $exeatRequest->status
                 ];
                 $successCount++;
-
             } catch (\Exception $e) {
                 $results[$exeatId] = [
                     'success' => false,
@@ -1386,7 +1391,6 @@ EOT;
                     ]
                 ];
                 $successCount++;
-
             } catch (\Exception $e) {
                 $results[$exeatId] = [
                     'success' => false,
