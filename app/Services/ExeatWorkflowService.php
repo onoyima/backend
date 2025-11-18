@@ -788,7 +788,7 @@ class ExeatWorkflowService
             ]);
             throw $e;
         }
-    }fix
+    }
 
     /**
      * Send parent consent email with approve/reject URLs
@@ -1131,7 +1131,7 @@ EOT;
         $subject = "Student Security {$action} - {$studentName}";
         $message = sprintf(
             // "Dear Parent/Guardian,\n\nThis is to inform you that your ward %s (Matric No: %s) has been signed %s by Security on %s.\n\nExeat Details:\n- Reason: %s\n- Destination: %s\n- Expected Return: %s\n\nIf you have any concerns, please contact the university immediately.\n\nThank you.\n\n— VERITAS University Security Department",
-            "This is to inform you that your ward %s (Matric No: %s) has been signed %s by Security on %s.\n\n   
+            "This is to inform you that your ward %s (Matric No: %s) has been signed %s by Security on %s.\n\n
              ",
 
             $studentName,
