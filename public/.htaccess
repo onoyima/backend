@@ -26,6 +26,7 @@
         
         # Handle specific origins dynamically
         SetEnvIf Origin "^https://exeat\.vercel\.app$" CORS_ORIGIN=https://exeat.vercel.app
+        SetEnvIf Origin "^https://exeat\.veritas\.edu\.ng$" CORS_ORIGIN=https://exeat.veritas.edu.ng
         SetEnvIf Origin "^https://.*\.veritas\.edu\.ng$" CORS_ORIGIN=$0
         SetEnvIf Origin "^https://.*\.vercel\.app$" CORS_ORIGIN=$0
         SetEnvIf Origin "^http://localhost:300[0-9]$" CORS_ORIGIN=$0
