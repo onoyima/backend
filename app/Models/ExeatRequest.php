@@ -152,10 +152,21 @@ class ExeatRequest extends Model
             $message .= "This student has applied to be absent during weekdays.\n\n";
             $message .= "— VERITAS University Exeat Management System";
             
-            \Mail::raw($message, function ($mail) use ($student) {
-                $mail->to(env('ACADEMIC_ADMIN_EMAIL'), 'Academic Administrator')
-                     ->subject("Weekday Absence Alert - {$student->fname} {$student->lname} ({$this->matric_no})");
-            });
+            $recipientEmail = env('ACADEMIC_ADMIN_EMAIL');
+            if (!is_string($recipientEmail) || trim($recipientEmail) === '' || !filter_var($recipientEmail, FILTER_VALIDATE_EMAIL)) {
+                $recipientEmail = env('ADMIN_EMAIL');
+            }
+            if (!is_string($recipientEmail) || trim($recipientEmail) === '' || !filter_var($recipientEmail, FILTER_VALIDATE_EMAIL)) {
+                \Log::warning('Skipped weekday absence email due to invalid admin email', [
+                    'configured_email' => $recipientEmail,
+                    'exeat_request_id' => $this->id
+                ]);
+            } else {
+                \Mail::raw($message, function ($mail) use ($student, $recipientEmail) {
+                    $mail->to($recipientEmail, 'Academic Administrator')
+                         ->subject("Weekday Absence Alert - {$student->fname} {$student->lname} ({$this->matric_no})");
+                });
+            }
             
             \Log::info('Weekday absence notification sent', [
                 'exeat_request_id' => $this->id,
