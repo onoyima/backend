@@ -96,6 +96,7 @@ Route::middleware('auth:sanctum')->group(function () {
     // Student routes
     Route::prefix('student')->group(function () {
         Route::get('/exeat-requests', [StudentExeatRequestController::class, 'index']);
+        Route::get('/exeat-requests/comments', [StudentExeatRequestController::class, 'comments']);
         Route::post('/exeat-requests', [StudentExeatRequestController::class, 'store']);
         Route::get('/exeat-requests/{id}', [StudentExeatRequestController::class, 'show']);
         Route::get('/exeat-requests/{id}/history', [StudentExeatRequestController::class, 'history']);
@@ -231,6 +232,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::middleware('role:dean')->group(function () {
         Route::get('/dean/dashboard', [StaffExeatRequestController::class, 'deanDashboard']);
         Route::get('/dean/exeat-requests', [StaffExeatRequestController::class, 'deanRequests']);
+        Route::post('/dean/exeat-requests', [DeanController::class, 'storeForStudent']);
+            Route::post('/dean/exeat-requests/bulkAprroval', [DeanController::class, 'bulkAprroval']);
         Route::put('/dean/exeat-requests/{id}', [DeanController::class, 'edit']);
         
         // Dean student debt routes

@@ -14,11 +14,12 @@ return [
     */
     'stateful' => [
         'localhost',
-        'localhost:3000', 
+        'localhost:3000',
         '127.0.0.1',
         '127.0.0.1:8000',
         '::1',
         'exeat.vercel.app',
+        'exeat.veritas.edu.ng',
         'attendance.veritas.edu.ng'
     ],
 

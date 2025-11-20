@@ -21,7 +21,7 @@ class ExpireOverdueExeatRequests extends Command
      *
      * @var string
      */
-    protected $description = 'Automatically expire exeat requests that have passed their return date and have not reached security signin stage';
+    protected $description = 'Automatically expire exeat requests that have passed their departure date + 6 hours and student has not left school (not reached security signin stage)';
 
     /**
      * Execute the console command.
@@ -29,29 +29,39 @@ class ExpireOverdueExeatRequests extends Command
     public function handle()
     {
         $isDryRun = $this->option('dry-run');
-        $today = Carbon::today();
+        $now = Carbon::now();
         
-        $this->info('Checking for overdue exeat requests...');
+        $this->info('Checking for expired exeat requests...');
         
-        // Find exeat requests that are overdue and haven't reached security_signin stage
-        $overdueRequests = ExeatRequest::where('return_date', '<', $today)
+        // Find exeat requests that are expired based on departure date + 6 hours
+        // and student hasn't left school yet (not reached security_signin stage)
+        $expiredRequests = ExeatRequest::with(['category'])
             ->where('is_expired', false)
-            ->whereNotIn('status', ['security_signin', 'hostel_signin', 'completed', 'rejected'])
+            ->whereNotIn('status', ['completed', 'security_signin', 'hostel_signin', 'rejected'])
+            ->whereHas('category', function($query) {
+                $query->where('name', '!=', 'Daily');
+            })
+            ->where(function($query) use ($now) {
+                $query->whereRaw('DATE_ADD(departure_date, INTERVAL 6 HOUR) < ?', [$now->format('Y-m-d H:i:s')]);
+            })
             ->get();
         
-        if ($overdueRequests->isEmpty()) {
-            $this->info('No overdue exeat requests found.');
+        if ($expiredRequests->isEmpty()) {
+            $this->info('No expired exeat requests found.');
             return 0;
         }
         
-        $this->info("Found {$overdueRequests->count()} overdue exeat request(s):");
+        $this->info("Found {$expiredRequests->count()} expired exeat request(s):");
         
-        foreach ($overdueRequests as $request) {
+        foreach ($expiredRequests as $request) {
             $student = $request->student;
-            $daysOverdue = $today->diffInDays(Carbon::parse($request->return_date));
+            $departureDeadline = Carbon::parse($request->departure_date)->addHours(6);
+            $hoursOverdue = $departureDeadline->diffInHours($now);
             
             $this->line("- ID: {$request->id}, Student: {$student->fname} {$student->lname} ({$request->matric_no})");
-            $this->line("  Status: {$request->status}, Return Date: {$request->return_date}, Days Overdue: {$daysOverdue}");
+            $this->line("  Status: {$request->status}, Category: {$request->category->name}");
+            $this->line("  Departure Date: {$request->departure_date}, Deadline: {$departureDeadline->format('Y-m-d H:i:s')}");
+            $this->line("  Hours past deadline: {$hoursOverdue}");
             
             if (!$isDryRun) {
                 // Update the request to expired status
@@ -62,16 +72,18 @@ class ExpireOverdueExeatRequests extends Command
                 ]);
                 
                 // Log the expiration
-                Log::info('Exeat request expired automatically', [
+                Log::info('Exeat request expired automatically (departure-based)', [
                     'exeat_request_id' => $request->id,
                     'student_id' => $request->student_id,
                     'matric_no' => $request->matric_no,
                     'original_status' => $request->getOriginal('status'),
-                    'return_date' => $request->return_date,
-                    'days_overdue' => $daysOverdue
+                    'category' => $request->category->name,
+                    'departure_date' => $request->departure_date,
+                    'deadline_passed' => $departureDeadline->format('Y-m-d H:i:s'),
+                    'hours_overdue' => $hoursOverdue
                 ]);
                 
-                $this->line("  ✓ Expired and marked as completed");
+                $this->line("  ✓ Expired - student hasn't left school by deadline");
             } else {
                 $this->line("  → Would be expired (dry run mode)");
             }
@@ -80,7 +92,7 @@ class ExpireOverdueExeatRequests extends Command
         if ($isDryRun) {
             $this->warn('This was a dry run. No changes were made. Run without --dry-run to actually expire requests.');
         } else {
-            $this->info("Successfully expired {$overdueRequests->count()} overdue exeat request(s).");
+            $this->info("Successfully expired {$expiredRequests->count()} exeat request(s).");
         }
         
         return 0;

@@ -38,7 +38,7 @@ class ExeatHistoryController extends Controller
 
         $validated = $request->validate([
             'per_page' => 'integer|min:1|max:100',
-            'status' => 'string|in:pending,approved,rejected,cancelled,completed,dean_review,deput-dean_review,cmd_review',
+            'status' => 'string|in:pending,approved,rejected,cancelled,completed,dean_review,secretary_review,cmd_review',
             'date_from' => 'date',
             'date_to' => 'date|after_or_equal:date_from',
             'student_name' => 'string|max:255',
@@ -166,7 +166,7 @@ class ExeatHistoryController extends Controller
         // Validate status - include all workflow statuses
         $validStatuses = [
             'pending', 'cmd_review', 'secretary_review', 'parent_consent', 
-            'dean_review', 'hostel_signout', 'security_signout', 'security_signin', 
+            'dean_review', 'secretary_review', 'hostel_signout', 'security_signout', 'security_signin', 
             'hostel_signin', 'completed', 'approved', 'rejected', 'cancelled'
         ];
         
@@ -188,7 +188,7 @@ class ExeatHistoryController extends Controller
             'sort_order' => 'string|in:asc,desc'
         ]);
 
-        $perPage = $validated['per_page'] ?? 20;
+        $perPage = $validated['per_page'] ?? 50;
         $sortBy = $validated['sort_by'] ?? 'created_at';
         $sortOrder = $validated['sort_order'] ?? 'desc';
 
@@ -232,10 +232,12 @@ class ExeatHistoryController extends Controller
             $query->where('is_medical', $validated['is_medical']);
         }
 
-        $exeats = $query->paginate($perPage);
+         $exeats = $query->paginate($perPage);
+        // $exeats = $query->get();
 
         // Transform the data
-        $exeats->getCollection()->transform(function ($exeat) {
+         $exeats->getCollection()->transform(function ($exeat) {
+        // $exeats->transform(function ($exeat) {
             return [
                 'id' => $exeat->id,
                 'student' => $exeat->student ? [
@@ -274,13 +276,13 @@ class ExeatHistoryController extends Controller
         Log::info('Exeats retrieved by status', [
             'user_id' => $user->id,
             'status' => $status,
-            'count' => $exeats->total(),
+            'count' => $exeats->count(),
             'filters' => $validated
         ]);
 
         return response()->json([
             'success' => true,
-            'data' => $exeats->items(),
+            'data' => $exeats,
             'pagination' => [
                 'current_page' => $exeats->currentPage(),
                 'last_page' => $exeats->lastPage(),
@@ -291,7 +293,7 @@ class ExeatHistoryController extends Controller
             ],
             'status_summary' => [
                 'status' => $status,
-                'total_count' => $exeats->total(),
+                'total_count' => $exeats->count(),
                 'medical_count' => ExeatRequest::where('status', $status)->where('is_medical', true)->count(),
                 'regular_count' => ExeatRequest::where('status', $status)->where('is_medical', false)->count()
             ]
@@ -488,7 +490,7 @@ class ExeatHistoryController extends Controller
             'cmd' => ['cmd_review'],
             'secretary' => ['secretary_review', 'parent_consent'],
             'dean' => $allStatuses, // Dean can see all statuses including completed
-            'dean2' => $allStatuses, // Dean2 can see all statuses including completed
+            'deputy-dean' => $allStatuses, // Deputy Dean can see all statuses including completed
             'admin' => $allStatuses, // Admin can see all statuses including completed
             'hostel_admin' => ['hostel_signout', 'hostel_signin'],
             'security' => ['security_signout', 'security_signin'],

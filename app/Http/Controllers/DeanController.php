@@ -5,15 +5,20 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use App\Models\ExeatRequest;
 use App\Models\ExeatCategory;
+use App\Models\StudentAcademic;
+use App\Models\StudentContact;
+use App\Models\VunaAccomodationHistory;
 use App\Models\ParentConsent;
 use App\Models\AuditLog;
 use App\Models\StudentExeatDebt;
+use App\Models\ExeatApproval;
 use App\Services\ExeatWorkflowService;
 use App\Services\ExeatNotificationService;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Http\JsonResponse;
+
 
 class DeanController extends Controller
 {
@@ -34,7 +39,7 @@ class DeanController extends Controller
         $this->workflowService = $workflowService;
         $this->notificationService = $notificationService;
     }
-    
+
     /**
      * Display a list of student debts for dean.
      *
@@ -64,6 +69,234 @@ class DeanController extends Controller
     }
 
     /**
+     * Create an exeat request on behalf of a student (dean only)
+     */
+    public function storeForStudent(Request $request)
+    {
+        // Validate input
+        $validated = $request->validate([
+            'student_id' => 'required|integer|exists:students,id',
+            'category_id' => 'required|integer|exists:exeat_categories,id',
+            'reason' => 'required|string',
+            'destination' => 'required|string',
+            'departure_date' => 'required|date',
+            'return_date' => 'required|date|after_or_equal:departure_date',
+            // 'preferred_mode_of_contact' => 'required|in:whatsapp,text,sms,phone_call,phone,any,email',
+        ]);
+
+        // Ensure category is active
+        $category = ExeatCategory::where('id', $validated['category_id'])
+            ->where('status', 'active')
+            ->first();
+
+        if (!$category) {
+            return response()->json([
+                'message' => 'Invalid or inactive category selected.',
+                'errors' => ['category_id' => ['The selected category is not available.']]
+            ], 422);
+        }
+
+        $studentId = (int) $validated['student_id'];
+
+        $isHolidayCategory = strtolower($category->name) === 'holiday';
+
+        // NOTE: Payment check disabled as requested
+        /*
+        // Check for unpaid exeat debts (skip for holiday category)
+        if (!$isHolidayCategory) {
+            $unpaidDebts = StudentExeatDebt::where('student_id', $studentId)
+                ->whereIn('payment_status', ['unpaid', 'paid'])
+                ->with('exeatRequest:id,departure_date,return_date')
+                ->get();
+
+            if ($unpaidDebts->count() > 0) {
+                $totalDebt = $unpaidDebts->sum('amount');
+                $debtDetails = $unpaidDebts->map(function ($debt) {
+                    return [
+                        'debt_id' => $debt->id,
+                        'amount' => $debt->amount,
+                        'overdue_hours' => $debt->overdue_hours,
+                        'payment_status' => $debt->payment_status,
+                        'exeat_request_id' => $debt->exeat_request_id,
+                        'departure_date' => $debt->exeatRequest->departure_date ?? null,
+                        'return_date' => $debt->exeatRequest->return_date ?? null,
+                    ];
+                });
+
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Student has outstanding exeat debts that must be cleared before creating a new exeat request.',
+                    'details' => [
+                        'total_debt_amount' => $totalDebt,
+                        'number_of_debts' => $unpaidDebts->count(),
+                        'debts' => $debtDetails,
+                        'payment_instructions' => 'Please clear outstanding debts through the payment system or contact the admin office for assistance.'
+                    ]
+                ], 403);
+            }
+        }
+        */
+
+        // NOTE: Active exeat check disabled as requested
+        /*
+        // Prevent new request if previous is not completed
+        $existing = ExeatRequest::where('student_id', $studentId)
+            ->whereNotIn('status', ['completed', 'rejected'])
+            ->first();
+
+        if ($existing) {
+            return response()->json([
+                'message' => 'This student already has an active exeat request. Please wait until it is completed or rejected before submitting a new one.'
+            ], 403);
+        }
+        */
+
+        // Get academic and contact info for the student
+        $studentAcademic = StudentAcademic::where('student_id', $studentId)->first();
+        $studentContact = StudentContact::where('student_id', $studentId)->first();
+        $accommodationHistory = VunaAccomodationHistory::getCurrentAccommodationForStudent($studentId);
+        $accommodation = null;
+        if ($accommodationHistory && $accommodationHistory->accommodation) {
+            $accommodation = $accommodationHistory->accommodation->name;
+        }
+
+        // Determine initial status based on category
+        $isMedical = in_array(strtolower($category->name), ['medical', 'daily_medical']);
+        if ($isMedical) {
+            $initialStatus = 'cmd_review';
+        } elseif ($isHolidayCategory) {
+            $initialStatus = 'dean_review';
+        } else {
+            $initialStatus = 'secretary_review';
+        }
+
+        // Create exeat request
+        $exeat = ExeatRequest::create([
+            'student_id' => $studentId,
+            'matric_no' => $studentAcademic ? $studentAcademic->matric_no : null,
+            'category_id' => $validated['category_id'],
+            'reason' => $validated['reason'],
+            'destination' => $validated['destination'],
+            'departure_date' => $validated['departure_date'],
+            'return_date' => $validated['return_date'],
+            'preferred_mode_of_contact' => 'phone_call',
+            // 'preferred_mode_of_contact' => $validated['preferred_mode_of_contact'],
+            'parent_surname' => $studentContact ? $studentContact->surname : null,
+            'parent_othernames' => $studentContact ? $studentContact->other_names : null,
+            'parent_phone_no' => $studentContact ? $studentContact->phone_no : null,
+            'parent_phone_no_two' => $studentContact ? $studentContact->phone_no_two : null,
+            'parent_email' => $studentContact ? $studentContact->email : null,
+            'student_accommodation' => $accommodation,
+            // 'status' => $initialStatus,
+            'status' => 'security_signout',
+            // 'is_medical' => $isMedical,
+        ]);
+
+        // Create first approval stage based on category
+        $initialRole = $isMedical ? 'cmd' : ($isHolidayCategory ? 'dean' : 'secretary');
+        ExeatApproval::create([
+            'exeat_request_id' => $exeat->id,
+            'role' => $initialRole,
+            'status' => 'approved',
+        ]);
+
+         // Send confirmation notification to student
+        try {
+            $this->notificationService->sendSubmissionConfirmation($exeat);
+        } catch (\Exception $e) {
+            Log::error('Failed to send submission confirmation', ['error' => $e->getMessage(), 'exeat_id' => $exeat->id]);
+        }
+
+        // Send confirmation notification to parent
+        // try {
+        //     $this->notificationService->sendParentNotification($exeat);
+        // } catch (\Exception $e) {
+        //     Log::error('Failed to send parent notification', ['error' => $e->getMessage(), 'exeat_id' => $exeat->id]);
+        // }
+        // Send approval required notification to appropriate staff (align with student controller behavior)
+        // try {
+        //     $role = $isMedical ? 'cmd' : 'secretary';
+        //     $this->notificationService->sendApprovalRequiredNotification($exeat, $role);
+        // } catch (\Exception $e) {
+        //     Log::error('Failed to send approval required notification', ['error' => $e->getMessage(), 'exeat_id' => $exeat->id]);
+        // }
+
+        Log::info('Dean created exeat request for student', ['dean_id' => $request->user()->id, 'student_id' => $studentId, 'exeat_id' => $exeat->id]);
+
+        return response()->json(['message' => 'Exeat request created successfully.', 'exeat_request' => $exeat], 201);
+    }
+
+
+    /**
+     * Directly advance ALL exeat requests in dean_review to hostel_signout.
+     * Minimal bulk updater per user request (bypasses workflow side-effects).
+     */
+    public function bulkAprroval(Request $request)
+    {
+        $user = $request->user();
+        if (!($user instanceof \App\Models\Staff)) {
+            return response()->json(['message' => 'Unauthorized.'], 403);
+        }
+
+        // // Ensure user has dean role
+        // $roleNames = $user->exeatRoles()->with('role')->get()->pluck('role.name')->toArray();
+        // if (!in_array('dean', $roleNames)) {
+        //     return response()->json(['message' => 'Unauthorized. Only Dean can perform this bulk status update.'], 403);
+        // }
+
+        $initialRole = 'dean';
+        $affected = 0;
+        $approvalsCreated = 0;
+
+        DB::beginTransaction();
+        try {
+            ExeatRequest::where('status', 'dean_review')
+                ->orderBy('id')
+                ->chunkById(500, function ($exeats) use (&$affected, &$approvalsCreated, $user, $initialRole) {
+                    foreach ($exeats as $exeat) {
+                        // Prevent duplicate approval records for the same stage
+                        $alreadyApproved = ExeatApproval::where('exeat_request_id', $exeat->id)
+                            ->where('role', $initialRole)
+                            ->where('status', 'approved')
+                            ->where('method', 'dean_review')
+                            ->exists();
+
+                        if (!$alreadyApproved) {
+                            ExeatApproval::create([
+                                'exeat_request_id' => $exeat->id,
+                                'staff_id' => $user->id,
+                                'role' => $initialRole,
+                                'status' => 'approved',
+                                'method' => 'dean_review',
+                            ]);
+                            $approvalsCreated++;
+                        }
+
+                        $exeat->update(['status' => 'hostel_signout']);
+                        $affected++;
+                    }
+                });
+
+            DB::commit();
+        } catch (\Throwable $e) {
+            DB::rollBack();
+            return response()->json(['message' => 'Bulk status update failed: ' . $e->getMessage()], 500);
+        }
+
+        Log::info('Dean bulk status update: dean_review -> hostel_signout', [
+            'staff_id' => $user->id,
+            'affected' => $affected,
+            'approvals_created' => $approvalsCreated,
+        ]);
+
+        return response()->json([
+            'message' => "Updated {$affected} exeat requests from dean_review to hostel_signout.",
+            'affected' => $affected,
+            'approvals_created' => $approvalsCreated,
+        ]);
+    }
+
+    /**
      * Display the specified student debt for dean.
      *
      * @param  int  $id
@@ -84,15 +317,15 @@ class DeanController extends Controller
         // Add pagination with configurable per_page parameter
         $perPage = $request->get('per_page', 20); // Default 20 items per page
         $perPage = min($perPage, 100); // Maximum 100 items per page
-        
+
         // For demo: return all approved/verified exeat requests
         $exeats = ExeatRequest::where('status', 'approved')
             ->with('student:id,fname,lname,passport,phone')
             ->orderBy('created_at', 'desc')
             ->paginate($perPage);
-            
+
         Log::info('Dean viewed all approved exeat requests', ['count' => $exeats->total()]);
-        
+
         return response()->json([
             'exeat_requests' => $exeats->items(),
             'pagination' => [
@@ -153,8 +386,10 @@ class DeanController extends Controller
         }
 
         // Check if exeat can be edited
-        if (in_array($exeat->status, ['revoked', 'rejected', 'cancelled']) && 
-            (!isset($validated['status']) || $validated['status'] !== 'completed')) {
+        if (
+            in_array($exeat->status, ['revoked', 'rejected', 'cancelled']) &&
+            (!isset($validated['status']) || $validated['status'] !== 'completed')
+        ) {
             return response()->json([
                 'message' => 'This exeat request cannot be edited as it is already ' . $exeat->status . '.'
             ], 409);
@@ -174,11 +409,11 @@ class DeanController extends Controller
                         'from' => $exeat->$field,
                         'to' => $value
                     ];
-                    
+
                     if ($field === 'actual_return_date') {
                         $actualReturnDateChanged = true;
                     }
-                    
+
                     $exeat->$field = $value;
                 }
             }
@@ -186,7 +421,7 @@ class DeanController extends Controller
             // Only save if there are changes
             if (!empty($changes)) {
                 $exeat->save();
-                
+
                 // Recalculate debt if actual_return_date was changed
                 if ($actualReturnDateChanged) {
                     $this->recalculateDebt($exeat, $oldActualReturnDate);
@@ -240,7 +475,7 @@ class DeanController extends Controller
             ], 500);
         }
     }
-    
+
     /**
      * Recalculate student debt based on actual return date
      *
@@ -254,27 +489,27 @@ class DeanController extends Controller
         if ($exeat->status !== 'completed' || !$exeat->actual_return_date) {
             return;
         }
-        
+
         $returnDate = \Carbon\Carbon::parse($exeat->return_date);
         $actualReturnDate = \Carbon\Carbon::parse($exeat->actual_return_date);
-        
+
         // Calculate days late using exact 24-hour periods at 11:59 PM
         $daysLate = $this->calculateDaysOverdue($returnDate, $actualReturnDate);
-        
+
         // Check if student returned late
         if ($daysLate > 0) {
             $debtAmount = $daysLate * 10000;
-            
+
             // Find existing debt or create new one
             $debt = StudentExeatDebt::firstOrNew([
                 'student_id' => $exeat->student_id,
                 'exeat_request_id' => $exeat->id
             ]);
-            
+
             $debt->amount = $debtAmount;
             $debt->payment_status = 'unpaid';
             $debt->save();
-            
+
             // Log the debt calculation
             Log::info('Student exeat debt recalculated by Dean', [
                 'exeat_id' => $exeat->id,
@@ -300,36 +535,36 @@ class DeanController extends Controller
     {
         // Find existing debt for this exeat request
         $debt = StudentExeatDebt::where('exeat_request_id', $exeat->id)->first();
-        
+
         if (!$debt) {
             // No existing debt found, nothing to recalculate
             return;
         }
-        
+
         // Calculate the difference in days between old and new return dates
         $oldDate = new \DateTime($oldReturnDate);
         $newDate = new \DateTime($newReturnDate);
         $daysDifference = $newDate->diff($oldDate)->days;
-        
+
         // If new date is earlier than old date, no additional debt
         if ($newDate <= $oldDate) {
             return;
         }
-        
+
         // Get the daily penalty rate from configuration or use default
         $dailyRate = config('exeat.debt.daily_rate', 1000); // Default to ₦1000 per day
-        
+
         // Calculate additional debt amount
         $additionalAmount = $daysDifference * $dailyRate;
-        
+
         // Update debt amount
         $oldAmount = $debt->amount;
         $debt->amount += $additionalAmount;
         $debt->save();
-        
+
         // Create audit log for debt recalculation
         AuditLog::create([
-            'staff_id' => auth()->id(),
+            'staff_id' => Auth::id(),
             'student_id' => $exeat->student_id,
             'action' => 'debt_recalculated',
             'target_type' => 'student_exeat_debt',
@@ -346,7 +581,7 @@ class DeanController extends Controller
             ]),
             'timestamp' => now(),
         ]);
-        
+
         // Send notification to student about debt recalculation
         try {
             $student = $exeat->student;
@@ -466,21 +701,21 @@ class DeanController extends Controller
     {
         // Set return date to 11:59 PM of the expected return date
         $returnDateEnd = $returnDate->copy()->setTime(23, 59, 59);
-        
+
         // If actual return is before or at 11:59 PM of return date, no debt
         if ($actualReturnTime->lte($returnDateEnd)) {
             return 0;
         }
-        
+
         // Calculate full 24-hour periods after 11:59 PM of return date
         $daysPassed = 0;
         $currentCheckDate = $returnDateEnd->copy();
-        
+
         while ($currentCheckDate->lt($actualReturnTime)) {
             $currentCheckDate->addDay()->setTime(23, 59, 59);
             $daysPassed++;
         }
-        
+
         return $daysPassed;
     }
 }

@@ -152,10 +152,21 @@ class ExeatRequest extends Model
             $message .= "This student has applied to be absent during weekdays.\n\n";
             $message .= "— VERITAS University Exeat Management System";
             
-            \Mail::raw($message, function ($mail) use ($student) {
-                $mail->to(env('ACADEMIC_ADMIN_EMAIL'), 'Academic Administrator')
-                     ->subject("Weekday Absence Alert - {$student->fname} {$student->lname} ({$this->matric_no})");
-            });
+            $recipientEmail = env('ACADEMIC_ADMIN_EMAIL');
+            if (!is_string($recipientEmail) || trim($recipientEmail) === '' || !filter_var($recipientEmail, FILTER_VALIDATE_EMAIL)) {
+                $recipientEmail = env('ADMIN_EMAIL');
+            }
+            if (!is_string($recipientEmail) || trim($recipientEmail) === '' || !filter_var($recipientEmail, FILTER_VALIDATE_EMAIL)) {
+                \Log::warning('Skipped weekday absence email due to invalid admin email', [
+                    'configured_email' => $recipientEmail,
+                    'exeat_request_id' => $this->id
+                ]);
+            } else {
+                \Mail::raw($message, function ($mail) use ($student, $recipientEmail) {
+                    $mail->to($recipientEmail, 'Academic Administrator')
+                         ->subject("Weekday Absence Alert - {$student->fname} {$student->lname} ({$this->matric_no})");
+                });
+            }
             
             \Log::info('Weekday absence notification sent', [
                 'exeat_request_id' => $this->id,
@@ -236,3 +247,9 @@ class ExeatRequest extends Model
 // pending, cmd_review, secretary_review, parent_consent, dean_review,
 // hostel_signout, security_signout, security_signin, hostel_signin,
 // completed, rejected, appeal
+//
+// Expiration Logic:
+// - Exeat requests expire if departure_date + 6 hours has passed
+// - Only applies to non-daily categories  
+// - Only expires requests where student hasn't left school yet (not reached security_signin stage)
+// - Expired requests are marked: is_expired=true, status='completed', expired_at=timestamp
