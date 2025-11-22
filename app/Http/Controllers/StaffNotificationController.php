@@ -10,6 +10,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\Rule;
+use Laravel\Sanctum\PersonalAccessToken;
 
 class StaffNotificationController extends Controller
 {
@@ -22,7 +23,7 @@ class StaffNotificationController extends Controller
     ) {
         $this->notificationService = $notificationService;
         $this->preferenceService = $preferenceService;
-        $this->middleware('auth:sanctum');
+        $this->middleware('auth:sanctum')->except('stream');
     }
 
     /**
@@ -496,5 +497,78 @@ class StaffNotificationController extends Controller
                 'notification_count' => $notifications->count()
             ]
         ]);
+    }
+
+    public function stream(Request $request): \Symfony\Component\HttpFoundation\StreamedResponse
+    {
+        $user = Auth::user();
+        if (!($user instanceof \App\Models\Staff)) {
+            // Fallback to token query for clients that send token via URL
+            $token = $request->query('token');
+            if ($token) {
+                $accessToken = PersonalAccessToken::findToken($token);
+                if ($accessToken && $accessToken->tokenable instanceof \App\Models\Staff) {
+                    $user = $accessToken->tokenable;
+                }
+            }
+        }
+        if (!($user instanceof \App\Models\Staff)) {
+            return response()->stream(function () {
+                echo "data: {\"error\": \"unauthorized\"}\n\n";
+                @ob_flush();
+                flush();
+            }, 401, [
+                'Content-Type' => 'text/event-stream',
+                'Cache-Control' => 'no-cache',
+                'Connection' => 'keep-alive'
+            ]);
+        }
+
+        $headers = [
+            'Content-Type' => 'text/event-stream',
+            'Cache-Control' => 'no-cache',
+            'Connection' => 'keep-alive'
+        ];
+
+        $callback = function () use ($user) {
+            $prevCount = null;
+            $prevLatest = null;
+            if (function_exists('set_time_limit')) {
+                @set_time_limit(0);
+            }
+            while (true) {
+                $query = ExeatNotification::where('recipient_type', ExeatNotification::RECIPIENT_STAFF)
+                    ->where('recipient_id', $user->id);
+                $count = (clone $query)->where('is_read', false)->count();
+                $latestNotification = (clone $query)->orderBy('id', 'desc')->first();
+                $latest = $latestNotification?->id;
+                $latestEvent = null;
+                if ($latestNotification && is_array($latestNotification->data)) {
+                    $latestEvent = $latestNotification->data['event'] ?? null;
+                }
+
+                if ($prevCount === null) {
+                    $prevCount = $count;
+                    $prevLatest = $latest;
+                }
+
+                if ($count !== $prevCount || $latest !== $prevLatest) {
+                    $data = json_encode(['unread_count' => $count, 'latest_id' => $latest, 'latest_event' => $latestEvent]);
+                    echo "data: {$data}\n\n";
+                    @ob_flush();
+                    flush();
+                    $prevCount = $count;
+                    $prevLatest = $latest;
+                }
+
+                echo ":heartbeat\n\n";
+                if (function_exists('connection_aborted') && connection_aborted()) {
+                    break;
+                }
+                usleep(500000);
+            }
+        };
+
+        return response()->stream($callback, 200, $headers);
     }
 }

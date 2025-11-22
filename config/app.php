@@ -66,6 +66,8 @@ return [
 
     'frontend_url' => env('FRONTEND_URL', 'http://localhost:3000'),
 
+    'hostel_stages_enabled' => env('HOSTEL_STAGES_ENABLED', true),
+
     /*
     |--------------------------------------------------------------------------
     | Application Timezone

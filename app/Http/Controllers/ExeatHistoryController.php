@@ -47,6 +47,18 @@ class ExeatHistoryController extends Controller
             'sort_order' => 'string|in:asc,desc'
         ]);
 
+        // Deny access if staff has no exeat roles and no active hostel assignments
+        $roleNames = $staff->exeatRoles()->with('role')->get()->pluck('role.name')->toArray();
+        $hasActiveHostelAssignment = \App\Models\HostelAdminAssignment::where('staff_id', $staff->id)
+            ->where('status', 'active')
+            ->exists();
+        if (empty($roleNames) && !$hasActiveHostelAssignment) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Access denied. No exeat role or hostel assignment.'
+            ], 403);
+        }
+
         $perPage = $validated['per_page'] ?? 20;
         $sortBy = $validated['sort_by'] ?? 'created_at';
         $sortOrder = $validated['sort_order'] ?? 'desc';
@@ -206,8 +218,32 @@ class ExeatHistoryController extends Controller
         if ($student) {
             $query->where('student_id', $student->id);
         }
-        // If user is staff, they can see all exeats (admin/dean level access)
-        // Additional role-based filtering can be added here if needed
+
+        // If user is staff, apply role-based filtering for hostel_admin
+        $staff = Staff::where('email', $user->email)->first();
+        if ($staff) {
+            $roleNames = $staff->exeatRoles()->with('role')->get()->pluck('role.name')->toArray();
+            $isAdminOrDean = !empty(array_intersect($roleNames, ['admin', 'dean', 'deputy-dean']));
+
+            if (in_array('hostel_admin', $roleNames) && !$isAdminOrDean) {
+                $assignedHostels = \App\Models\HostelAdminAssignment::where('staff_id', $staff->id)
+                    ->where('status', 'active')
+                    ->with('hostel')
+                    ->get();
+
+                if ($assignedHostels->isEmpty()) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Unauthorized. No active hostel assignments.'
+                    ], 403);
+                }
+
+                $hostelNames = $assignedHostels->pluck('hostel.name')->filter()->values()->toArray();
+                if (!empty($hostelNames)) {
+                    $query->whereIn('student_accommodation', $hostelNames);
+                }
+            }
+        }
 
         // Apply filters
         if (isset($validated['date_from'])) {
@@ -280,6 +316,9 @@ class ExeatHistoryController extends Controller
             'filters' => $validated
         ]);
 
+        $medicalCount = (clone $query)->where('is_medical', true)->count();
+        $regularCount = (clone $query)->where('is_medical', false)->count();
+
         return response()->json([
             'success' => true,
             'data' => $exeats,
@@ -293,9 +332,9 @@ class ExeatHistoryController extends Controller
             ],
             'status_summary' => [
                 'status' => $status,
-                'total_count' => $exeats->count(),
-                'medical_count' => ExeatRequest::where('status', $status)->where('is_medical', true)->count(),
-                'regular_count' => ExeatRequest::where('status', $status)->where('is_medical', false)->count()
+                'total_count' => $exeats->total(),
+                'medical_count' => $medicalCount,
+                'regular_count' => $regularCount
             ]
         ]);
     }

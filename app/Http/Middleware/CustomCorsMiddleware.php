@@ -28,8 +28,9 @@ class CustomCorsMiddleware
         // Define allowed origins
         $allowedOrigins = [
             'https://exeat.vercel.app',
-            'https://exeat.veritas.edu.ng',
-            'https://attendance.veritas.edu.ng',
+            // 'https://exeat.veritas.edu.ng',
+            // 'https://attendance.veritas.edu.ng',
+            'https://testexeat.veritas.edu.ng',
             'http://localhost:3000',
             'http://localhost:3001',
         ];

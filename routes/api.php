@@ -54,6 +54,9 @@ use App\Http\Controllers\HostelAdminController;
 
 // Public routes
 Route::post('/login', [AuthController::class, 'login']);
+Route::get('/login', function () {
+    return response()->json(['message' => 'Unauthorized'], 401);
+})->name('login');
 Route::post('/register', [AuthController::class, 'register']);
 
 Route::get('/parent/exeat-consent/{token}/{action}', [ParentConsentController::class, 'handleWebConsent']);
@@ -131,6 +134,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::prefix('staff')->group(function () {
         Route::get('/dashboard', [StaffExeatRequestController::class, 'dashboard']);
         Route::get('/exeat-requests', [StaffExeatRequestController::class, 'index']);
+        Route::get('/exeat-requests/export', [StaffExeatRequestController::class, 'export']);
         Route::get('/exeat-requests/{id}', [StaffExeatRequestController::class, 'show']);
         Route::put('/exeat-requests/{id}', [StaffExeatRequestController::class, 'edit']);
         Route::post('/exeat-requests/{id}/approve', [StaffExeatRequestController::class, 'approve']);
@@ -148,8 +152,8 @@ Route::middleware('auth:sanctum')->group(function () {
         // Staff notification routes
         Route::prefix('notifications')->group(function () {
             Route::get('/', [StaffNotificationController::class, 'index']);
-            Route::get('/unread-count', [StaffNotificationController::class, 'getUnreadCount']);
-            Route::post('/{id}/mark-read', [StaffNotificationController::class, 'markAsRead']);
+            Route::get('/unread-count', [StaffNotificationController::class, 'unreadCount']);
+            Route::post('/mark-read', [StaffNotificationController::class, 'markAsRead']);
             Route::get('/preferences', [StaffNotificationController::class, 'getPreferences']);
             Route::put('/preferences', [StaffNotificationController::class, 'updatePreferences']);
             Route::get('/pending-approvals', [StaffNotificationController::class, 'getPendingApprovals']);
@@ -160,6 +164,37 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::get('/{id}', [StaffNotificationController::class, 'show']);
             Route::get('/exeat/{exeatId}', [StaffNotificationController::class, 'getExeatNotifications']);
         });
+
+        Route::get('/gate-events', [StaffExeatRequestController::class, 'gateEvents'])->middleware('role:hostel_admin');
+        Route::get('/gate-events/export', [StaffExeatRequestController::class, 'gateEventsExport'])->middleware('role:hostel_admin');
+    });
+
+    Route::get('/notifications/alert-audio', function () {
+        $candidates = [
+            storage_path('app/alert.mp3'),
+            storage_path('app/public/alert.mp3'),
+            public_path('alert.mp3'),
+            public_path('storage/alert.mp3'),
+            base_path('front/public/alert.mp3'),
+        ];
+        $path = null;
+        foreach ($candidates as $candidate) {
+            if (file_exists($candidate)) { $path = $candidate; break; }
+        }
+        if (!$path) {
+            return response()->json(['message' => 'Audio not found'], 404);
+        }
+        return response()->file($path, [
+            'Content-Type' => 'audio/mpeg'
+        ]);
+    });
+
+    Route::get('/staff/notifications/stream', [StaffNotificationController::class, 'stream']);
+
+    Route::get('/config/hostel-stages', function () {
+        return response()->json([
+            'hostel_stages_enabled' => (bool) config('app.hostel_stages_enabled')
+        ]);
     });
 
     // Parent consent routes

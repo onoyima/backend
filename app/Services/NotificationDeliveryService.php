@@ -164,8 +164,23 @@ class NotificationDeliveryService
                         }
                     }
                 }
+                // Staff notifications for gate events (hostel admins on security sign-out/sign-in)
+                elseif ($notification->recipient_type === ExeatNotification::RECIPIENT_STAFF) {
+                    if (isset($notificationData['event']) && in_array($notificationData['event'], ['gate_signout', 'gate_signin'])) {
+                        $methods[] = 'email';
+                    }
+                }
                 break;
-                
+            case ExeatNotification::TYPE_REMINDER:
+                $notificationData = $notification->data ?? [];
+                // Staff notifications for gate events on reminder type
+                if ($notification->recipient_type === ExeatNotification::RECIPIENT_STAFF) {
+                    if (isset($notificationData['event']) && in_array($notificationData['event'], ['gate_signout', 'gate_signin'])) {
+                        $methods[] = 'email';
+                    }
+                }
+                break;
+            
             case ExeatNotification::TYPE_STAFF_COMMENT:
                 // Student emails for staff comments (always send email)
                 if ($notification->recipient_type === ExeatNotification::RECIPIENT_STUDENT) {
@@ -465,8 +480,8 @@ class NotificationDeliveryService
             case ExeatNotification::RECIPIENT_STAFF:
                 $staff = Staff::find($notification->recipient_id);
                 return $staff ? [
-                    'name' => $staff->full_name,
-                    'email' => $staff->email,
+                    'name' => trim((string) (($staff->fname ?? '') . ' ' . ($staff->lname ?? ''))),
+                    'email' => ($staff->email ?? null) ?: ($staff->p_email ?? null),
                     'phone' => $staff->phone ? PhoneUtility::formatToInternational($staff->phone) : null
                 ] : null;
                 

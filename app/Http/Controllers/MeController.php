@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use App\Models\Staff;
 use App\Models\Student;
+use App\Models\HostelAdminAssignment;
 
 class MeController extends Controller
 {
@@ -42,6 +43,15 @@ class MeController extends Controller
                 return null;
             })->filter()->values()->toArray();
 
+            $assignedHostels = HostelAdminAssignment::where('staff_id', $user->id)
+                ->where('status', 'active')
+                ->with('hostel')
+                ->get()
+                ->pluck('hostel.name')
+                ->filter()
+                ->values()
+                ->toArray();
+
             // Structure the staff profile
             $profile = [
                 'personal' => [
@@ -71,6 +81,7 @@ class MeController extends Controller
                         'status' => $user->status,
                     ],
                     'exeat_roles' => $exeatRolesDetailed,
+                    'assigned_hostels' => $assignedHostels,
                 ],
                 'contacts' => $user->contacts, // Staff contacts (e.g., emergency contacts)
                 'work_profiles' => $user->workProfiles, // Staff work-related profiles
@@ -164,6 +175,7 @@ class MeController extends Controller
         return response()->json([
             'user_id' => $user->id,
             'roles' => $roles,
+            'assigned_hostels' => isset($assignedHostels) ? $assignedHostels : [],
             'profile' => $profile,
         ]);
     }
