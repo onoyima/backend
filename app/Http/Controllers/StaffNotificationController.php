@@ -206,7 +206,7 @@ class StaffNotificationController extends Controller
         foreach ($staffRoles as $role) {
             $status = match ($role) {
                 'cmd' => 'cmd_review',
-                'deputy_dean' => 'deputy-dean_review',
+                'secretary' => 'secretary_review',
                 'dean' => 'dean_review',
                 'hostel_admin' => 'hostel_signout',
                 'security' => 'security_signout',
@@ -334,7 +334,7 @@ class StaffNotificationController extends Controller
         foreach ($staffRoles as $role) {
             $status = match ($role) {
                 'cmd' => 'cmd_review',
-                'deputy_dean' => 'deputy-dean_review',
+                'secretary' => 'secretary_review',
                 'dean' => 'dean_review',
                 'hostel_admin' => 'hostel_signout',
                 'security' => 'security_signout',

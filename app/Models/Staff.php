@@ -52,13 +52,15 @@ class Staff extends Authenticatable
     }
     public function assignedRoles()
     {
-        return $this->hasMany(StaffAssignedRole::class, 'staff_id');
+        return $this->hasMany(StaffExeatRole::class, 'staff_id');
     }
    
-    public function positions()
-    {
-        return $this->hasMany(StaffPosition::class, 'staff_id');
-    }
+    // Commented out - StaffPosition doesn't have staff_id column
+    // Use workProfiles() relationship to access positions through StaffWorkProfile
+    // public function positions()
+    // {
+    //     return $this->hasMany(StaffPosition::class, 'staff_id');
+    // }
     public function promotions()
     {
         return $this->hasMany(StaffPromotion::class, 'staff_id');

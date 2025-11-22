@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
 /**
- * staff_exeat_roles links staff to exeat_roles (dean, deputy_dean, cmd, etc.)
+ * staff_exeat_roles links staff to exeat_roles (dean, secretary, cmd, etc.)
  * Used to enforce workflow and permissions.
  */
 class StaffExeatRole extends Model

@@ -6,6 +6,7 @@ use Illuminate\Http\Request;
 use App\Models\ExeatRequest;
 use App\Models\Staff;
 use App\Models\Student;
+
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
@@ -37,7 +38,7 @@ class ExeatHistoryController extends Controller
 
         $validated = $request->validate([
             'per_page' => 'integer|min:1|max:100',
-            'status' => 'string|in:pending,approved,rejected,cancelled,completed,dean_review,deput-dean_review,cmd_review',
+            'status' => 'string|in:pending,approved,rejected,cancelled,completed,dean_review,secretary_review,cmd_review',
             'date_from' => 'date',
             'date_to' => 'date|after_or_equal:date_from',
             'student_name' => 'string|max:255',
@@ -95,11 +96,18 @@ class ExeatHistoryController extends Controller
             
             return [
                 'id' => $exeat->id,
-                'student' => [
+                'student' => $exeat->student ? [
                     'id' => $exeat->student->id,
                     'name' => $exeat->student->fname . ' ' . $exeat->student->lname,
                     'matric_no' => $exeat->matric_no, // Get matric_no from exeat_requests table
-                    'email' => $exeat->student->email
+                    'email' => $exeat->student->email,
+                    'phone' => $exeat->student->phone
+                ] : [
+                    'id' => null,
+                    'name' => 'Unknown Student',
+                    'matric_no' => $exeat->matric_no,
+                    'email' => null,
+                    'phone' => null
                 ],
                 'category' => $exeat->category ? $exeat->category->name : null,
                 'reason' => $exeat->reason,
@@ -157,8 +165,8 @@ class ExeatHistoryController extends Controller
         
         // Validate status - include all workflow statuses
         $validStatuses = [
-            'pending', 'cmd_review', 'deputy-dean_review', 'parent_consent', 
-            'dean_review', 'hostel_signout', 'security_signout', 'security_signin', 
+            'pending', 'cmd_review', 'secretary_review', 'parent_consent', 
+            'dean_review', 'secretary_review', 'hostel_signout', 'security_signout', 'security_signin', 
             'hostel_signin', 'completed', 'approved', 'rejected', 'cancelled'
         ];
         
@@ -180,7 +188,7 @@ class ExeatHistoryController extends Controller
             'sort_order' => 'string|in:asc,desc'
         ]);
 
-        $perPage = $validated['per_page'] ?? 20;
+        $perPage = $validated['per_page'] ?? 50;
         $sortBy = $validated['sort_by'] ?? 'created_at';
         $sortOrder = $validated['sort_order'] ?? 'desc';
 
@@ -224,17 +232,26 @@ class ExeatHistoryController extends Controller
             $query->where('is_medical', $validated['is_medical']);
         }
 
-        $exeats = $query->paginate($perPage);
+         $exeats = $query->paginate($perPage);
+        // $exeats = $query->get();
 
         // Transform the data
-        $exeats->getCollection()->transform(function ($exeat) {
+         $exeats->getCollection()->transform(function ($exeat) {
+        // $exeats->transform(function ($exeat) {
             return [
                 'id' => $exeat->id,
-                'student' => [
+                'student' => $exeat->student ? [
                     'id' => $exeat->student->id,
                     'name' => $exeat->student->fname . ' ' . $exeat->student->lname,
                     'matric_no' => $exeat->student->matric_no,
-                    'email' => $exeat->student->email
+                    'email' => $exeat->student->email,
+                    'phone' => $exeat->student->phone
+                ] : [
+                    'id' => null,
+                    'name' => 'Unknown Student',
+                    'matric_no' => null,
+                    'email' => null,
+                    'phone' => null
                 ],
                 'category' => $exeat->category ? $exeat->category->name : null,
                 'reason' => $exeat->reason,
@@ -245,7 +262,7 @@ class ExeatHistoryController extends Controller
                 'is_medical' => $exeat->is_medical,
                 'approvals' => $exeat->approvals->map(function($approval) {
                     return [
-                        'staff_name' => $approval->staff->fname . ' ' . $approval->staff->lname,
+                        'staff_name' => $approval->staff ? ($approval->staff->fname . ' ' . $approval->staff->lname) : 'Unknown Staff',
                         'status' => $approval->status,
                         'comments' => $approval->comments,
                         'approved_at' => $approval->created_at
@@ -259,13 +276,13 @@ class ExeatHistoryController extends Controller
         Log::info('Exeats retrieved by status', [
             'user_id' => $user->id,
             'status' => $status,
-            'count' => $exeats->total(),
+            'count' => $exeats->count(),
             'filters' => $validated
         ]);
 
         return response()->json([
             'success' => true,
-            'data' => $exeats->items(),
+            'data' => $exeats,
             'pagination' => [
                 'current_page' => $exeats->currentPage(),
                 'last_page' => $exeats->lastPage(),
@@ -276,7 +293,7 @@ class ExeatHistoryController extends Controller
             ],
             'status_summary' => [
                 'status' => $status,
-                'total_count' => $exeats->total(),
+                'total_count' => $exeats->count(),
                 'medical_count' => ExeatRequest::where('status', $status)->where('is_medical', true)->count(),
                 'regular_count' => ExeatRequest::where('status', $status)->where('is_medical', false)->count()
             ]
@@ -360,5 +377,135 @@ class ExeatHistoryController extends Controller
                 ]
             ]
         ]);
+    }
+
+    /**
+     * Get individual exeat details by ID and status
+     * GET /api/exeats/by-status/{status}/{id}
+     */
+    public function getExeatByStatusAndId(Request $request, $status, $id): JsonResponse
+    {
+        $user = $request->user();
+        
+        // Validate status - include all workflow statuses
+        $validStatuses = [
+            'pending', 'cmd_review', 'secretary_review', 'parent_consent', 
+            'dean_review', 'hostel_signout', 'security_signout', 'security_signin', 
+            'hostel_signin', 'completed', 'approved', 'rejected', 'cancelled'
+        ];
+        
+        if (!in_array($status, $validStatuses)) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid status. Must be one of: ' . implode(', ', $validStatuses)
+            ], 400);
+        }
+
+        // Validate ID format
+        if (!is_numeric($id) || $id <= 0) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Invalid exeat request ID.'
+            ], 400);
+        }
+
+        // Get the exeat request with basic relationships
+        $exeat = ExeatRequest::with([
+            'student:id,fname,lname,email,passport,phone',
+            'category:id,name'
+        ])
+        ->where('id', $id)
+        ->where('status', $status)
+        ->first();
+
+        if (!$exeat) {
+            return response()->json([
+                'message' => 'Exeat request not found.'
+            ], 404);
+        }
+
+        // Check permissions for students
+        $student = Student::where('email', $user->email)->first();
+        if ($student) {
+            // Students can only view their own requests
+            if ($exeat->student_id !== $student->id) {
+                return response()->json([
+                    'message' => 'You do not have permission to view this request.'
+                ], 403);
+            }
+            // Student has permission to view their own request
+            return response()->json([
+                'exeat_request' => $exeat
+            ]);
+        }
+
+        // For staff, check role-based permissions
+        $staff = Staff::where('email', $user->email)->first();
+        if ($staff) {
+            $roleNames = $staff->exeatRoles()->with('role')->get()->pluck('role.name')->toArray();
+            
+            // If staff has no roles, deny access
+            if (empty($roleNames)) {
+                return response()->json([
+                    'message' => 'You do not have permission to view this request.'
+                ], 403);
+            }
+            
+            $allowedStatuses = $this->getAllowedStatuses($roleNames);
+
+            if (!in_array($exeat->status, $allowedStatuses)) {
+                return response()->json([
+                    'message' => 'You do not have permission to view this request.'
+                ], 403);
+            }
+        } else {
+            // User is neither student nor staff
+            return response()->json([
+                'message' => 'You do not have permission to view this request.'
+            ], 403);
+        }
+
+        return response()->json([
+            'exeat_request' => $exeat
+        ]);
+    }
+
+    private function getAllowedStatuses(array $roleNames)
+    {
+        // Define all workflow statuses
+        $activeStatuses = [
+            'pending', 'cmd_review', 'secretary_review', 'parent_consent',
+            'dean_review', 'hostel_signout', 'security_signout', 'security_signin',
+            'hostel_signin', 'cancelled'
+        ];
+
+        // Define all statuses including completed ones for admin/dean
+        $allStatuses = [
+            'pending', 'cmd_review', 'secretary_review', 'parent_consent',
+            'dean_review', 'hostel_signout', 'security_signout', 'security_signin',
+            'hostel_signin', 'completed', 'approved', 'rejected', 'cancelled'
+        ];
+
+        $roleStatusMap = [
+            'cmd' => ['cmd_review'],
+            'secretary' => ['secretary_review', 'parent_consent'],
+            'dean' => $allStatuses, // Dean can see all statuses including completed
+            'deputy-dean' => $allStatuses, // Deputy Dean can see all statuses including completed
+            'admin' => $allStatuses, // Admin can see all statuses including completed
+            'hostel_admin' => ['hostel_signout', 'hostel_signin'],
+            'security' => ['security_signout', 'security_signin'],
+        ];
+
+        $allowedStatuses = [];
+
+        foreach ($roleNames as $role) {
+            if (isset($roleStatusMap[$role])) {
+                $allowedStatuses = array_merge($allowedStatuses, $roleStatusMap[$role]);
+            } else {
+                Log::notice('Role not mapped to statuses', ['role' => $role]);
+            }
+        }
+
+        return array_unique($allowedStatuses);
     }
 }

@@ -23,22 +23,57 @@ class LookupController extends Controller
         ]);
     }
 
-    public function hostelAdmins()
+    public function hostelAdmins(Request $request)
     {
+        // Add pagination with configurable per_page parameter
+        $perPage = $request->get('per_page', 20); // Default 20 items per page
+        $perPage = min($perPage, 100); // Maximum 100 items per page
+        
         // Get all staff IDs with the hostel_admin role
         $hostelAdminIds = StaffExeatRole::where('exeat_role', 'hostel_admin')->pluck('staff_id');
-        // Get staff details
+        // Get staff details with pagination
         $admins = \App\Models\Staff::whereIn('id', $hostelAdminIds)
-            ->get(['id', 'fname', 'lname', 'email']);
+            ->select(['id', 'fname', 'lname', 'email'])
+            ->paginate($perPage);
+            
         Log::info('Hostel admins lookup requested');
-        return response()->json(['hostel_admins' => $admins]);
+        
+        return response()->json([
+            'hostel_admins' => $admins->items(),
+            'pagination' => [
+                'current_page' => $admins->currentPage(),
+                'last_page' => $admins->lastPage(),
+                'per_page' => $admins->perPage(),
+                'total' => $admins->total(),
+                'from' => $admins->firstItem(),
+                'to' => $admins->lastItem(),
+                'has_more_pages' => $admins->hasMorePages()
+            ]
+        ]);
     }
 
-    public function hostels()
+    public function hostels(Request $request)
     {
-        $hostels = \App\Models\VunaAccomodation::all(['id', 'name']);
+        // Add pagination with configurable per_page parameter
+        $perPage = $request->get('per_page', 20); // Default 20 items per page
+        $perPage = min($perPage, 100); // Maximum 100 items per page
+        
+        $hostels = \App\Models\VunaAccomodation::select(['id', 'name'])->paginate($perPage);
+        
         Log::info('Hostels lookup requested');
-        return response()->json(['hostels' => $hostels]);
+        
+        return response()->json([
+            'hostels' => $hostels->items(),
+            'pagination' => [
+                'current_page' => $hostels->currentPage(),
+                'last_page' => $hostels->lastPage(),
+                'per_page' => $hostels->perPage(),
+                'total' => $hostels->total(),
+                'from' => $hostels->firstItem(),
+                'to' => $hostels->lastItem(),
+                'has_more_pages' => $hostels->hasMorePages()
+            ]
+        ]);
     }
 
     public function exeatUsage()
@@ -60,10 +95,29 @@ class LookupController extends Controller
         ]);
     }
 
-    public function auditLogs()
+    public function auditLogs(Request $request)
     {
-        $logs = \App\Models\AuditLog::orderBy('created_at', 'desc')->get(['id', 'user_id', 'action', 'created_at']);
+        // Add pagination with configurable per_page parameter
+        $perPage = $request->get('per_page', 50); // Default 50 items per page for logs
+        $perPage = min($perPage, 200); // Maximum 200 items per page for logs
+        
+        $logs = \App\Models\AuditLog::orderBy('created_at', 'desc')
+            ->select(['id', 'user_id', 'action', 'created_at'])
+            ->paginate($perPage);
+            
         \Log::info('Audit logs lookup requested');
-        return response()->json(['audit_logs' => $logs]);
+        
+        return response()->json([
+            'audit_logs' => $logs->items(),
+            'pagination' => [
+                'current_page' => $logs->currentPage(),
+                'last_page' => $logs->lastPage(),
+                'per_page' => $logs->perPage(),
+                'total' => $logs->total(),
+                'from' => $logs->firstItem(),
+                'to' => $logs->lastItem(),
+                'has_more_pages' => $logs->hasMorePages()
+            ]
+        ]);
     }
 }

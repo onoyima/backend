@@ -313,43 +313,4 @@ class StudentNotificationController extends Controller
             'data' => $summary
         ]);
     }
-
-    /**
-     * Test notification delivery (for testing purposes).
-     */
-    public function testNotification(Request $request): JsonResponse
-    {
-        $request->validate([
-            'delivery_method' => Rule::in(['in_app', 'email', 'sms', 'whatsapp']),
-            'message' => 'required|string|max:500'
-        ]);
-
-        $student = Auth::user();
-        
-        // Create a test notification
-        $notification = ExeatNotification::create([
-            'exeat_request_id' => null, // Test notification
-            'recipient_type' => ExeatNotification::RECIPIENT_STUDENT,
-            'recipient_id' => $student->id,
-            'notification_type' => 'test',
-            'title' => 'Test Notification',
-            'message' => $request->message,
-            'priority' => ExeatNotification::PRIORITY_LOW,
-            'delivery_methods' => [$request->delivery_method],
-            'delivery_status' => []
-        ]);
-        
-        // Queue for delivery
-        $deliveryService = app(\App\Services\NotificationDeliveryService::class);
-        $deliveryService->queueNotificationDelivery($notification);
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Test notification queued for delivery',
-            'data' => [
-                'notification_id' => $notification->id,
-                'delivery_method' => $request->delivery_method
-            ]
-        ]);
-    }
 }

@@ -29,6 +29,48 @@ class VunaAccomodationHistory extends Model
 
     public function student()
     {
-        return $this->belongsTo(Students::class, 'student_id');
+        return $this->belongsTo(Student::class, 'student_id');
+    }
+
+    public function vuSession()
+    {
+        return $this->belongsTo(VuSession::class, 'vu_session_id');
+    }
+
+    public function accommodation()
+    {
+        return $this->belongsTo(VunaAccomodation::class, 'vuna_accomodation_id');
+    }
+
+    /**
+     * Get the current accommodation for a student based on active session
+     * If no accommodation found in primary session, check all active sessions
+     */
+    public static function getCurrentAccommodationForStudent($studentId)
+    {
+        $currentSession = VuSession::getCurrentSession();
+        
+        if (!$currentSession) {
+            return null;
+        }
+
+        // First, try to get accommodation from the primary current session
+        $accommodation = self::where('student_id', $studentId)
+            ->where('vu_session_id', $currentSession->id)
+            ->with('accommodation')
+            ->first();
+
+        // If no accommodation found in primary session, check all active sessions
+        if (!$accommodation) {
+            $accommodation = self::where('student_id', $studentId)
+                ->whereHas('vuSession', function($query) {
+                    $query->where('status', 1);
+                })
+                ->with(['accommodation', 'vuSession'])
+                ->orderBy('created_at', 'desc')
+                ->first();
+        }
+
+        return $accommodation;
     }
 }

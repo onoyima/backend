@@ -38,4 +38,27 @@ test_exeat_creation.php
 /database/migrations/2025_08_28_153111_create_exeat_notifications_table.php
 API_DOCUMENTATION.md
 API_ENDPOINTS.md
-
+config/auth copy.php
+config/sanctum copy.php
+DASHBOARD_API_TESTING_GUIDE.md
+test_dashboard_endpoints.php
+test_weekdays_notification.php
+test_audit_trail.php
+nysc.env
+DEPUTY_DEAN_COMPLETE_ANALYSIS.md
+add_payment_charge_columns.sql
+communication_portal_database.sql
+deputy_dean_to_secretary_migration_corrected.sql
+DEPUTY_DEAN_TO_SECRETARY_MIGRATION_PLAN.md
+deputy_dean_to_secretary_migration.sql
+EXEAT_API_CHANGES.md
+exeat_workflow_with_deputy_dean_parent_consent.txt
+HOSTEL_ADMIN_ASSIGNMENT_API.md
+HOSTEL_ADMIN_ASSIGNMENT_COMPLETE_API.md
+hostel_admin_assignments_table.sql
+mock_data.txt
+OVERDUE_PAYMENT_SYSTEM_COMPLETE.md
+paystack_integration_documentation.txt
+SMS_NOTIFICATIONS_COMPLETE_LIST.md
+student_exeat_debt_api_documentation.txt
+vu_sessions.sql

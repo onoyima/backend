@@ -35,11 +35,21 @@ return [
         ],
     ],
 
-'twilio' => [
-  'sid' => env('TWILIO_SID'),
-  'token' => env('TWILIO_TOKEN'),
-  'sms_from' => env('TWILIO_SMS_FROM'),
-  'whatsapp_from' => env('TWILIO_WHATSAPP_FROM'),
-],
+    'twilio' => [
+        'sid' => env('TWILIO_SID'),
+        'token' => env('TWILIO_TOKEN'),
+        'sms_from' => env('TWILIO_SMS_FROM'),
+        'whatsapp_from' => env('TWILIO_WHATSAPP_FROM'),
+        'whatsapp_enabled' => env('TWILIO_WHATSAPP_ENABLED', true),
+        'messaging_service_sid' => env('TWILIO_MESSAGING_SERVICE_SID'),
+    ],
+
+    // Meta WhatsApp Business API settings removed - using Twilio WhatsApp exclusively
+
+    'paystack' => [
+        'secret_key' => env('PAYSTACK_SECRET_KEY'),
+        'public_key' => env('PAYSTACK_PUBLIC_KEY'),
+        'payment_url' => env('PAYSTACK_PAYMENT_URL', 'https://api.paystack.co'),
+    ],
 
 ];

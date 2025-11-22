@@ -10,7 +10,18 @@ class ParentConsent extends Model
     use HasFactory;
     protected $table = 'parent_consents';
     protected $fillable = [
-        'exeat_request_id', 'student_contact_id', 'consent_status', 'consent_method', 'consent_token', 'expires_at', 'consent_timestamp'
+        'exeat_request_id',
+        'student_contact_id',
+        'consent_status',
+        'consent_method',
+        'consent_token',
+        'expires_at',
+        'consent_timestamp',
+        'acted_by_staff_id',
+        'action_type',
+        'secretary_reason',
+        'notification_status',
+        'status_message'
     ];
 
     public function exeatRequest()
@@ -20,5 +31,10 @@ class ParentConsent extends Model
     public function studentContact()
     {
         return $this->belongsTo(StudentContact::class);
+    }
+
+    public function actedByStaff()
+    {
+        return $this->belongsTo(Staff::class, 'acted_by_staff_id');
     }
 }

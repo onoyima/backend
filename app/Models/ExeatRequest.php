@@ -28,8 +28,20 @@ class ExeatRequest extends Model
         'student_accommodation',
         'status',
         'is_medical',
+        'is_expired',
+        'expired_at',
         'created_at',
         'updated_at',
+    ];
+
+    protected $casts = [
+        'departure_date' => 'date',
+        'return_date' => 'date',
+        'is_medical' => 'boolean',
+        'is_expired' => 'boolean',
+        'expired_at' => 'datetime',
+        'created_at' => 'datetime',
+        'updated_at' => 'datetime',
     ];
 
     // Relationships (unchanged) ...
@@ -77,6 +89,14 @@ class ExeatRequest extends Model
     {
         return $this->belongsTo(ExeatCategory::class);
     }
+    
+    /**
+     * Get the debts associated with this exeat request.
+     */
+    public function debts()
+    {
+        return $this->hasMany(StudentExeatDebt::class, 'exeat_request_id');
+    }
 
     // Helper method to check if medical review is required
     public function needsMedicalReview(): bool
@@ -84,7 +104,7 @@ class ExeatRequest extends Model
         return $this->is_medical && $this->status === 'pending';
     }
 
-    // Method to check if exeat request covers weekdays and send notification
+    // Method to check if exeat request covers weekdays and send notification (called after dean approval)
     public function checkWeekdaysAndNotify(): void
     {
         $weekdaysCovered = $this->getWeekdaysCovered();
@@ -114,7 +134,7 @@ class ExeatRequest extends Model
         return $weekdays;
     }
 
-    // Send email notification for weekday absence
+    // Send email notification for weekday absence (triggered after dean approval)
     private function sendWeekdayNotification(array $weekdays): void
     {
         try {
@@ -132,10 +152,21 @@ class ExeatRequest extends Model
             $message .= "This student has applied to be absent during weekdays.\n\n";
             $message .= "— VERITAS University Exeat Management System";
             
-            \Mail::raw($message, function ($mail) use ($student) {
-                $mail->to('onoyimab@veritas.edu.ng', 'Academic Administrator')
-                     ->subject("Weekday Absence Alert - {$student->fname} {$student->lname} ({$this->matric_no})");
-            });
+            $recipientEmail = env('ACADEMIC_ADMIN_EMAIL');
+            if (!is_string($recipientEmail) || trim($recipientEmail) === '' || !filter_var($recipientEmail, FILTER_VALIDATE_EMAIL)) {
+                $recipientEmail = env('ADMIN_EMAIL');
+            }
+            if (!is_string($recipientEmail) || trim($recipientEmail) === '' || !filter_var($recipientEmail, FILTER_VALIDATE_EMAIL)) {
+                \Log::warning('Skipped weekday absence email due to invalid admin email', [
+                    'configured_email' => $recipientEmail,
+                    'exeat_request_id' => $this->id
+                ]);
+            } else {
+                \Mail::raw($message, function ($mail) use ($student, $recipientEmail) {
+                    $mail->to($recipientEmail, 'Academic Administrator')
+                         ->subject("Weekday Absence Alert - {$student->fname} {$student->lname} ({$this->matric_no})");
+                });
+            }
             
             \Log::info('Weekday absence notification sent', [
                 'exeat_request_id' => $this->id,
@@ -151,9 +182,74 @@ class ExeatRequest extends Model
             ]);
         }
     }
+
+    /**
+     * Scope to get only expired exeat requests
+     */
+    public function scopeExpired($query)
+    {
+        return $query->where('is_expired', true);
+    }
+
+    /**
+     * Scope to get only non-expired exeat requests
+     */
+    public function scopeNotExpired($query)
+    {
+        return $query->where('is_expired', false);
+    }
+
+    /**
+     * Scope to get overdue exeat requests (past return date but not expired yet)
+     */
+    public function scopeOverdue($query)
+    {
+        return $query->where('return_date', '<', now()->toDateString())
+                    ->where('is_expired', false)
+                    ->whereNotIn('status', ['security_signin', 'hostel_signin', 'completed', 'rejected']);
+    }
+
+    /**
+     * Check if the exeat request is overdue
+     */
+    public function isOverdue()
+    {
+        return $this->return_date < now()->toDateString() 
+               && !$this->is_expired 
+               && !in_array($this->status, ['security_signin', 'hostel_signin', 'completed', 'rejected']);
+    }
+
+    /**
+     * Mark the exeat request as expired
+     */
+    public function markAsExpired()
+    {
+        return $this->update([
+            'is_expired' => true,
+            'expired_at' => now(),
+            'status' => 'completed'
+        ]);
+    }
+
+    /**
+     * Get the status display with expired indicator
+     */
+    public function getStatusDisplayAttribute()
+    {
+        if ($this->is_expired) {
+            return $this->status . ' (Expired)';
+        }
+        return $this->status;
+    }
 }
 
 // Status enum for clarity:
-// pending, cmd_review, deputy-dean_review, parent_consent, dean_review,
+// pending, cmd_review, secretary_review, parent_consent, dean_review,
 // hostel_signout, security_signout, security_signin, hostel_signin,
 // completed, rejected, appeal
+//
+// Expiration Logic:
+// - Exeat requests expire if departure_date + 6 hours has passed
+// - Only applies to non-daily categories  
+// - Only expires requests where student hasn't left school yet (not reached security_signin stage)
+// - Expired requests are marked: is_expired=true, status='completed', expired_at=timestamp

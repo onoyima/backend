@@ -1,20 +1,51 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+
+// Simple test route without any dependencies
+Route::get('/test', function () {
+    return response()->json(['status' => 'success', 'message' => 'Laravel is working!']);
+});
 use Illuminate\Support\Facades\Cache;
 use App\Http\Controllers\BirthdayController;
 use Illuminate\Http\Request;
 use App\Services\ExeatNotificationService;
-use App\Models\User;
+use App\Services\UrlShortenerService;
 use App\Models\ExeatRequest;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Redirect;
+use Illuminate\Support\Facades\View;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Foundation\Auth\User;
 
 Route::get('/send-specific-birthday', [BirthdayController::class, 'sendBirthdayEmailToSpecificUsers']);
 
+// URL Shortener redirect route
+Route::get('/s/{shortCode}', function ($shortCode, UrlShortenerService $urlShortener) {
+    $originalUrl = $urlShortener->resolveUrl($shortCode);
 
+    if ($originalUrl) {
+        return redirect($originalUrl);
+    }
+
+    return abort(404, 'Short URL not found or expired');
+});
+
+// Admin Command Routes
+use App\Http\Controllers\AdminCommandController;
+
+Route::prefix('admin/commands')->group(function () {
+    Route::get('/', [AdminCommandController::class, 'index'])->name('admin.commands.index');
+    Route::post('/check-overdue', [AdminCommandController::class, 'checkOverdue'])->name('admin.commands.check-overdue');
+    Route::post('/expire-overdue', [AdminCommandController::class, 'expireOverdue'])->name('admin.commands.expire-overdue');
+    Route::post('/run-all', [AdminCommandController::class, 'runAll'])->name('admin.commands.run-all');
+});
 Route::get('/', function () {
     return Redirect::to('/status');
 });
+
+// Include demo routes for consent pages (remove in production)
+require __DIR__.'/demo.php';
 
 Route::get('/status', function () {
     $list = Cache::get('api_status_list', []);
@@ -25,7 +56,7 @@ Route::get('/test-notifications', function (Request $request) {
     try {
         // Check current notification count
         $initialCount = DB::table('exeat_notifications')->count();
-        
+
         // Get a test student and exeat request
         $student = User::where('role', 'student')->first();
         if (!$student) {
@@ -34,7 +65,7 @@ Route::get('/test-notifications', function (Request $request) {
                 'initial_count' => $initialCount
             ]);
         }
-        
+
         $exeatRequest = ExeatRequest::where('student_id', $student->id)->first();
         if (!$exeatRequest) {
             return response()->json([
@@ -43,21 +74,21 @@ Route::get('/test-notifications', function (Request $request) {
                 'initial_count' => $initialCount
             ]);
         }
-        
+
         // Test notification service
-        $notificationService = new ExeatNotificationService();
-        
+        // $notificationService = new ExeatNotificationService();
+
         // Send a test stage change notification
-        $notificationService->sendStageChangeNotification($exeatRequest, $student);
-        
+        // $notificationService->sendStageChangeNotification($exeatRequest, $student);
+
         // Check new count
         $finalCount = DB::table('exeat_notifications')->count();
-        
+
         // Get the latest notification
         $latestNotification = DB::table('exeat_notifications')
             ->orderBy('created_at', 'desc')
             ->first();
-        
+
         return response()->json([
             'success' => true,
             'initial_count' => $initialCount,
@@ -81,7 +112,7 @@ Route::get('/test-notifications', function (Request $request) {
                 'exeat_request_id' => $latestNotification->exeat_request_id
             ] : null
         ]);
-        
+
     } catch (\Exception $e) {
          return response()->json([
              'error' => 'Exception occurred: ' . $e->getMessage(),

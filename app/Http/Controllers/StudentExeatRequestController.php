@@ -16,6 +16,7 @@ use App\Models\AuditLog;
 use App\Models\ExeatApproval;
 use App\Services\ExeatNotificationService;
 use App\Models\ExeatNotification;
+use App\Models\StudentExeatDebt;
 
 class StudentExeatRequestController extends Controller
 {
@@ -36,20 +37,68 @@ class StudentExeatRequestController extends Controller
             'destination' => 'required|string',
             'departure_date' => 'required|date',
             'return_date' => 'required|date|after_or_equal:departure_date',
-            'preferred_mode_of_contact' => 'required|in:whatsapp,text,phone_call,any',
+            'preferred_mode_of_contact' => 'required|in:whatsapp,text,sms,phone_call,phone,any,email',
         ]);
+
+        // Get category to check if it's holiday (skip debt checks for holiday)
+        // Only allow active categories
+        $category = ExeatCategory::where('id', $validated['category_id'])
+            ->where('status', 'active')
+            ->first();
+
+        if (!$category) {
+            return response()->json([
+                'message' => 'Invalid or inactive category selected.',
+                'errors' => ['category_id' => ['The selected category is not available.']]
+            ], 422);
+        }
+
+        $isHolidayCategory = strtolower($category->name) === 'holiday';
+
+        // Check for unpaid exeat debts (skip for holiday category)
+        if (!$isHolidayCategory) {
+            $unpaidDebts = \App\Models\StudentExeatDebt::where('student_id', $user->id)
+                ->whereIn('payment_status', ['unpaid', 'paid']) // Include 'paid' but not yet cleared
+                ->with('exeatRequest:id,departure_date,return_date')
+                ->get();
+
+            if ($unpaidDebts->count() > 0) {
+                $totalDebt = $unpaidDebts->sum('amount');
+                $debtDetails = $unpaidDebts->map(function ($debt) {
+                    return [
+                        'debt_id' => $debt->id,
+                        'amount' => $debt->amount,
+                        'overdue_hours' => $debt->overdue_hours,
+                        'payment_status' => $debt->payment_status,
+                        'exeat_request_id' => $debt->exeat_request_id,
+                        'departure_date' => $debt->exeatRequest->departure_date ?? null,
+                        'return_date' => $debt->exeatRequest->return_date ?? null,
+                    ];
+                });
+
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'You have outstanding exeat debts that must be cleared before creating a new exeat request.',
+                    'details' => [
+                        'total_debt_amount' => $totalDebt,
+                        'number_of_debts' => $unpaidDebts->count(),
+                        'debts' => $debtDetails,
+                        'payment_instructions' => 'Please pay your outstanding debts through the payment system or contact the admin office for assistance.'
+                    ]
+                ], 403);
+            }
+        }
+
         // Get student academic info for matric_no
         $studentAcademic = StudentAcademic::where('student_id', $user->id)->first();
         // Get parent/guardian contact info
         $studentContact = StudentContact::where('student_id', $user->id)->first();
-        // Get latest accommodation info
-        $accommodationHistory = VunaAccomodationHistory::where('student_id', $user->id)->orderBy('created_at', 'desc')->first();
+        // Get current accommodation info based on active session
+        $accommodationHistory = VunaAccomodationHistory::getCurrentAccommodationForStudent($user->id);
         $accommodation = null;
-        if ($accommodationHistory) {
-            $accommodationModel = VunaAccomodation::find($accommodationHistory->vuna_accomodation_id);
-            $accommodation = $accommodationModel ? $accommodationModel->name : null;
+        if ($accommodationHistory && $accommodationHistory->accommodation) {
+            $accommodation = $accommodationHistory->accommodation->name;
         }
-        // Prevent new request if previous is not completed
         // Prevent new request if previous is not completed
         $existing = ExeatRequest::where('student_id', $user->id)
             ->whereNotIn('status', ['completed', 'rejected']) // Optional: allow new request after rejection
@@ -60,10 +109,17 @@ class StudentExeatRequestController extends Controller
                 'message' => 'You already have an active exeat request. Please wait until it is completed or rejected before submitting a new one.'
             ], 403);
         }
-        // Get category
-        $category = ExeatCategory::find($validated['category_id']);
-        $isMedical = strtolower($category->name) === 'medical';
-        $initialStatus = $isMedical ? 'cmd_review' : 'deputy-dean_review';
+        // Use already retrieved category and determine medical status and initial status
+        $isMedical = in_array(strtolower($category->name), ['medical', 'daily_medical']);
+
+        // Determine initial status based on category
+        if ($isMedical) {
+            $initialStatus = 'cmd_review';
+        } elseif ($isHolidayCategory) {
+            $initialStatus = 'dean_review'; // Holiday exeats skip secretary_review and parent_consent
+        } else {
+            $initialStatus = 'secretary_review';
+        }
         $exeat = ExeatRequest::create([
             'student_id' => $user->id,
             'matric_no' => $studentAcademic ? $studentAcademic->matric_no : null,
@@ -82,15 +138,15 @@ class StudentExeatRequestController extends Controller
             'status' => $initialStatus,
             'is_medical' => $isMedical,
         ]);
-        // Create first approval stage
+        // Create first approval stage based on category
+        $initialRole = $isMedical ? 'cmd' : ($isHolidayCategory ? 'dean' : 'secretary');
         \App\Models\ExeatApproval::create([
             'exeat_request_id' => $exeat->id,
-            'role' => $isMedical ? 'cmd' : 'deputy_dean',
+            'role' => $initialRole,
             'status' => 'pending',
         ]);
 
-        // Check if request covers weekdays and send notification if needed
-        $exeat->checkWeekdaysAndNotify();
+        // Weekdays notification will be sent after dean approval instead of at creation
 
         // Send confirmation notification to student
         try {
@@ -101,7 +157,7 @@ class StudentExeatRequestController extends Controller
 
         // Send approval required notification to appropriate staff
         try {
-            $role = $isMedical ? 'cmd' : 'deputy_dean';
+            $role = $isMedical ? 'cmd' : 'secretary';
             $this->notificationService->sendApprovalRequiredNotification($exeat, $role);
         } catch (\Exception $e) {
             Log::error('Failed to send approval required notification', ['error' => $e->getMessage(), 'exeat_id' => $exeat->id]);
@@ -113,50 +169,83 @@ class StudentExeatRequestController extends Controller
 
 
     // GET /api/student/profile
-public function profile(Request $request)
-{
-    $user = $request->user();
+    public function profile(Request $request)
+    {
+        $user = $request->user();
 
-    $studentAcademic = StudentAcademic::where('student_id', $user->id)->first();
-    $studentContact = StudentContact::where('student_id', $user->id)->first();
-    $accommodationHistory = VunaAccomodationHistory::where('student_id', $user->id)
-        ->orderBy('created_at', 'desc')->first();
+        $studentAcademic = StudentAcademic::where('student_id', $user->id)->first();
+        $studentContact = StudentContact::where('student_id', $user->id)->first();
+        $accommodationHistory = VunaAccomodationHistory::getCurrentAccommodationForStudent($user->id);
 
-    $accommodation = null;
-    if ($accommodationHistory) {
-        $accommodationModel = VunaAccomodation::find($accommodationHistory->vuna_accomodation_id);
-        $accommodation = $accommodationModel ? $accommodationModel->name : null;
+        $accommodation = null;
+        if ($accommodationHistory && $accommodationHistory->accommodation) {
+            $accommodation = $accommodationHistory->accommodation->name;
+        }
+
+        return response()->json([
+            'profile' => [
+                'matric_no' => $studentAcademic?->matric_no,
+                'parent_surname' => $studentContact?->surname,
+                'parent_othernames' => $studentContact?->other_names,
+                'parent_phone_no' => $studentContact?->phone_no,
+                'parent_phone_no_two' => $studentContact?->phone_no_two,
+                'parent_email' => $studentContact?->email,
+                'student_accommodation' => $accommodation,
+            ]
+        ]);
     }
 
-    return response()->json([
-        'profile' => [
-            'matric_no' => $studentAcademic?->matric_no,
-            'parent_surname' => $studentContact?->surname,
-            'parent_othernames' => $studentContact?->other_names,
-            'parent_phone_no' => $studentContact?->phone_no,
-            'parent_phone_no_two' => $studentContact?->phone_no_two,
-            'parent_email' => $studentContact?->email,
-            'student_accommodation' => $accommodation,
-        ]
-    ]);
-}
-
-public function categories()
-{
-    return response()->json([
-        'categories' => ExeatCategory::all(['id', 'name', 'description'])
-    ]);
-}
+    public function categories()
+    {
+        return response()->json([
+            'categories' => ExeatCategory::where('status', 'active')->get(['id', 'name', 'description'])
+        ]);
+    }
 
     // GET /api/student/exeat-requests
     public function index(Request $request)
     {
         $user = $request->user();
         $exeats = ExeatRequest::where('student_id', $user->id)
-            ->with(['category:id,name', 'student:id,fname,lname,passport'])
+            ->with(['category:id,name', 'student:id,fname,lname,passport,phone'])
             ->orderBy('created_at', 'desc')
             ->get();
         return response()->json(['exeat_requests' => $exeats]);
+    }
+
+    // GET /api/student/exeat-requests/comments
+    public function comments(Request $request)
+    {
+        $user = $request->user();
+        $exeats = ExeatRequest::where('student_id', $user->id)
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        $data = $exeats->map(function ($exeat) {
+            $status = $exeat->status;
+
+            $commentForStatus = ExeatNotification::where('exeat_request_id', $exeat->id)
+                ->where('notification_type', ExeatNotification::TYPE_STAFF_COMMENT)
+                ->where('data->status', $status)
+                ->orderBy('created_at', 'desc')
+                ->first();
+
+            if (!$commentForStatus) {
+                return null; // No comment for this status; exclude
+            }
+
+            $rawComment = $commentForStatus->data['raw_comment'] ?? null;
+            if ($rawComment === null || $rawComment === '') {
+                return null; // Exclude null/empty comment entries
+            }
+
+            return [
+                'status' => $status,
+                'raw_comment' => $rawComment,
+            ];
+        })->filter()->values();
+
+        return response()->json(['comments' => $data]);
     }
 
     // GET /api/student/exeat-requests/{id}
@@ -165,7 +254,7 @@ public function categories()
         $user = $request->user();
         $exeat = ExeatRequest::where('id', $id)
             ->where('student_id', $user->id)
-            ->with(['category:id,name', 'student:id,fname,lname,passport'])
+            ->with(['category:id,name', 'student:id,fname,lname,passport,phone'])
             ->first();
         if (!$exeat) {
             return response()->json(['message' => 'Exeat request not found.'], 404);
@@ -226,14 +315,18 @@ public function categories()
             return response()->json(['message' => 'Exeat request not found.'], 404);
         }
 
-        // Get all audit logs related to this exeat request
+        // Add pagination with configurable per_page parameter
+        $perPage = $request->get('per_page', 20); // Default 20 items per page
+        $perPage = min($perPage, 100); // Maximum 100 items per page
+
+        // Get all audit logs related to this exeat request with pagination
         $auditLogs = AuditLog::where('target_type', 'exeat_request')
             ->where('target_id', $id)
             ->orderBy('timestamp', 'desc')
             ->with(['staff:id,fname,lname', 'student:id,fname,lname,passport'])
-            ->get();
+            ->paginate($perPage);
 
-        // Get all approvals with their staff information
+        // Get all approvals with their staff information (usually small dataset, no pagination needed)
         $approvals = ExeatApproval::where('exeat_request_id', $id)
             ->with('staff:id,fname,lname')
             ->orderBy('updated_at', 'desc')
@@ -241,7 +334,16 @@ public function categories()
 
         // Combine the data for a complete history
         $history = [
-            'audit_logs' => $auditLogs,
+            'audit_logs' => $auditLogs->items(),
+            'audit_logs_pagination' => [
+                'current_page' => $auditLogs->currentPage(),
+                'last_page' => $auditLogs->lastPage(),
+                'per_page' => $auditLogs->perPage(),
+                'total' => $auditLogs->total(),
+                'from' => $auditLogs->firstItem(),
+                'to' => $auditLogs->lastItem(),
+                'has_more_pages' => $auditLogs->hasMorePages()
+            ],
             'approvals' => $approvals,
             'exeat_request' => $exeat
         ];

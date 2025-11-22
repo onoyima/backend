@@ -21,6 +21,273 @@ class ExeatNotificationService
     }
 
     /**
+     * Send notification to the student when a special dean override is applied.
+     */
+    public function sendSpecialOverrideNotification(
+        ExeatRequest $exeatRequest,
+        string $overrideReason,
+        ?string $emergencyContact = null,
+        ?string $specialInstructions = null
+    ): void {
+        try {
+            $title = 'Special Dean Override Applied';
+            $message = 'A special override has been applied to your exeat request.';
+
+            if (!empty($overrideReason)) {
+                $message .= " Reason: {$overrideReason}.";
+            }
+            if (!empty($emergencyContact)) {
+                $message .= " Emergency contact: {$emergencyContact}.";
+            }
+            if (!empty($specialInstructions)) {
+                $message .= " Instructions: {$specialInstructions}.";
+            }
+
+            $data = [
+                'override_reason' => $overrideReason,
+                'emergency_contact' => $emergencyContact,
+                'special_instructions' => $specialInstructions,
+                'is_dean_override' => true,
+                'current_status' => $exeatRequest->status,
+            ];
+
+            $this->createNotification(
+                $exeatRequest,
+                [['type' => 'App\\Models\\Student', 'id' => $exeatRequest->student_id]],
+                'special_override',
+                $title,
+                $message,
+                \App\Models\ExeatNotification::PRIORITY_HIGH,
+                $data
+            );
+        } catch (\Exception $e) {
+            Log::error('Failed to send special override notification', [
+                'exeat_id' => $exeatRequest->id,
+                'error' => $e->getMessage()
+            ]);
+        }
+    }
+
+    /**
+     * Send notification about exeat request modification.
+     */
+    public function sendExeatModifiedNotification(ExeatRequest $exeatRequest, string $message): void
+    {
+        try {
+            // Notify the student in-app only (email removed to reduce excessive notifications)
+            $this->createNotification(
+                $exeatRequest,
+                [['type' => 'App\\Models\\Student', 'id' => $exeatRequest->student_id]],
+                'exeat_modified',
+                'Exeat Request Modified',
+                $message,
+                ExeatNotification::PRIORITY_HIGH
+            );
+        } catch (\Exception $e) {
+            Log::error('Failed to send exeat modification notification', [
+                'exeat_id' => $exeatRequest->id,
+                'error' => $e->getMessage()
+            ]);
+        }
+    }
+
+
+
+    /**
+     * Create SMS notification for exeat modification.
+     */
+    protected function createExeatModifiedSmsNotification(ExeatRequest $exeatRequest, Student $student, string $message): ExeatNotification
+    {
+        $smsContent = "EXEAT ALERT: {$message} Please check your exeat dashboard for details.";
+
+        return new ExeatNotification([
+            'exeat_request_id' => $exeatRequest->id,
+            'recipient_type' => get_class($student),
+            'recipient_id' => $student->id,
+            'notification_type' => 'exeat_modified_sms',
+            'title' => 'Exeat Modified',
+            'message' => $smsContent,
+            'priority' => ExeatNotification::PRIORITY_HIGH,
+        ]);
+    }
+    
+    /**
+     * Send notification about debt recalculation.
+     *
+     * @param Student $student
+     * @param ExeatRequest $exeatRequest
+     * @param float $additionalAmount
+     * @param float $totalAmount
+     * @return void
+     */
+    public function sendDebtRecalculationNotification(Student $student, ExeatRequest $exeatRequest, float $additionalAmount, float $totalAmount): void
+    {
+        try {
+            $message = "Your exeat debt has been recalculated due to a change in your return date. Additional amount: ₦{$additionalAmount}. Total debt: ₦{$totalAmount}.";
+            
+            // Notify the student in-app only (email and SMS removed for cost optimization)
+            $this->createNotification(
+                $exeatRequest,
+                [['type' => 'App\\Models\\Student', 'id' => $student->id]],
+                'debt_recalculated',
+                'Exeat Debt Recalculated',
+                $message,
+                ExeatNotification::PRIORITY_HIGH
+            );
+        } catch (\Exception $e) {
+            Log::error('Failed to send debt recalculation notification', [
+                'exeat_id' => $exeatRequest->id,
+                'student_id' => $student->id,
+                'error' => $e->getMessage()
+            ]);
+        }
+    }
+
+
+
+    /**
+     * Create SMS notification for debt recalculation.
+     *
+     * @param ExeatRequest $exeatRequest
+     * @param Student $student
+     * @param float $additionalAmount
+     * @param float $totalAmount
+     * @return ExeatNotification
+     */
+    protected function createDebtRecalculationSmsNotification(ExeatRequest $exeatRequest, Student $student, float $additionalAmount, float $totalAmount): ExeatNotification
+    {
+        $smsContent = "EXEAT DEBT ALERT: Your debt has been recalculated. Additional: ₦{$additionalAmount}. Total: ₦{$totalAmount}. Check dashboard for details.";
+
+        return new ExeatNotification([
+            'exeat_request_id' => $exeatRequest->id,
+            'recipient_type' => get_class($student),
+            'recipient_id' => $student->id,
+            'notification_type' => 'debt_recalculated_sms',
+            'title' => 'Debt Recalculated',
+            'message' => $smsContent,
+            'priority' => ExeatNotification::PRIORITY_HIGH,
+        ]);
+    }
+
+    /**
+     * Send notification about student debt.
+     */
+    public function sendDebtNotification(Student $student, ExeatRequest $exeatRequest, float $amount): void
+    {
+        try {
+            $message = "You have incurred a debt of ₦{$amount} due to late return from your exeat.";
+
+            // Notify the student in-app only (email and SMS removed for cost optimization)
+            $this->createNotification(
+                $exeatRequest,
+                [['type' => 'student', 'id' => $student->id]],
+                'student_debt_created',
+                'Exeat Debt Notification',
+                $message,
+                ExeatNotification::PRIORITY_HIGH
+            );
+        } catch (\Exception $e) {
+            Log::error('Failed to send debt notification', [
+                'student_id' => $student->id,
+                'exeat_id' => $exeatRequest->id,
+                'error' => $e->getMessage()
+            ]);
+        }
+    }
+
+
+
+    /**
+     * Create SMS notification for student debt.
+     */
+    protected function createDebtSmsNotification(ExeatRequest $exeatRequest, Student $student, float $amount): ExeatNotification
+    {
+        $smsContent = "EXEAT DEBT ALERT: You have incurred a debt of ₦{$amount} due to late return from exeat #{$exeatRequest->id}. Please make payment and submit proof through the exeat system.";
+
+        return new ExeatNotification([
+            'exeat_request_id' => $exeatRequest->id,
+            'recipient_type' => get_class($student),
+            'recipient_id' => $student->id,
+            'notification_type' => 'student_debt_sms',
+            'title' => 'Exeat Debt Alert',
+            'message' => $smsContent,
+            'priority' => ExeatNotification::PRIORITY_HIGH,
+        ]);
+    }
+
+    /**
+     * Send notification about student debt clearance.
+     * Email notifications removed - only in-app notifications sent.
+     */
+    public function sendDebtClearanceNotification(Student $student, ExeatRequest $exeatRequest): void
+    {
+        try {
+            $message = "Your exeat debt has been cleared successfully.";
+
+            // Notify the student in-app only (email removed to reduce notification volume)
+            $this->createNotification(
+                $exeatRequest,
+                [['type' => 'App\\Models\\Student', 'id' => $student->id]],
+                'student_debt_cleared',
+                'Exeat Debt Cleared',
+                $message,
+                ExeatNotification::PRIORITY_MEDIUM
+            );
+
+            Log::info('Debt clearance notification sent (in-app only)', [
+                'student_id' => $student->id,
+                'exeat_id' => $exeatRequest->id
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to send debt clearance notification', [
+                'student_id' => $student->id,
+                'exeat_id' => $exeatRequest->id,
+                'error' => $e->getMessage()
+            ]);
+        }
+    }
+
+
+
+    /**
+     * Create SMS notification for student debt clearance.
+     */
+    protected function createDebtClearanceSmsNotification(ExeatRequest $exeatRequest, Student $student): ExeatNotification
+    {
+        $smsContent = "EXEAT NOTIFICATION: Your debt for exeat #{$exeatRequest->id} has been cleared successfully. Thank you.";
+
+        return new ExeatNotification([
+            'exeat_request_id' => $exeatRequest->id,
+            'recipient_type' => get_class($student),
+            'recipient_id' => $student->id,
+            'notification_type' => 'student_debt_cleared_sms',
+            'title' => 'Exeat Debt Cleared',
+            'message' => $smsContent,
+            'priority' => ExeatNotification::PRIORITY_MEDIUM,
+        ]);
+    }
+
+    /**
+     * Create SMS notification for staff comment (raw comment only).
+     */
+    protected function createStaffCommentSmsNotification(ExeatRequest $exeatRequest, Student $student, string $comment): ExeatNotification
+    {
+        return new ExeatNotification([
+            'exeat_request_id' => $exeatRequest->id,
+            'recipient_type' => get_class($student),
+            'recipient_id' => $student->id,
+            'notification_type' => 'staff_comment_sms',
+            'title' => 'Staff Comment',
+            'message' => $comment, // Raw comment only, no template
+            'priority' => ExeatNotification::PRIORITY_HIGH,
+            'data' => [
+                'status' => $exeatRequest->status,
+                'delivery_type' => 'sms_only'
+            ]
+        ]);
+    }
+
+    /**
      * Create a notification for an exeat request.
      */
     public function createNotification(
@@ -29,7 +296,8 @@ class ExeatNotificationService
         string $type,
         string $title,
         string $message,
-        string $priority = ExeatNotification::PRIORITY_MEDIUM
+        string $priority = ExeatNotification::PRIORITY_MEDIUM,
+        array $data = []
     ): Collection {
         $notifications = collect();
 
@@ -42,12 +310,17 @@ class ExeatNotificationService
                 'title' => $title,
                 'message' => $message,
                 'priority' => $priority,
+                'data' => $data,
             ]);
 
             $notifications->push($notification);
 
-            // Deliver notification synchronously
-            $deliveryResults = $this->deliveryService->deliverNotificationSync($notification);
+            // Deliver notification synchronously for in-app only
+            // For staff comments, we'll handle email and SMS separately
+            $deliveryResults = [];
+            if ($type !== ExeatNotification::TYPE_STAFF_COMMENT) {
+                $deliveryResults = $this->deliveryService->deliverNotificationSync($notification);
+            }
 
             // Log delivery results
             foreach ($deliveryResults as $method => $result) {
@@ -82,13 +355,21 @@ class ExeatNotificationService
         $title = "Exeat Request Status Updated";
         $message = $this->buildStageChangeMessage($exeatRequest, $oldStatus, $newStatus);
 
+        // Include old and new status in notification data for delivery method determination
+        $data = [
+            'old_status' => $oldStatus,
+            'new_status' => $newStatus,
+            'is_dean_approval' => ($oldStatus === 'dean_review' && $newStatus === 'hostel_signout')
+        ];
+
         return $this->createNotification(
             $exeatRequest,
             $recipients,
             ExeatNotification::TYPE_STAGE_CHANGE,
             $title,
             $message,
-            ExeatNotification::PRIORITY_MEDIUM
+            ExeatNotification::PRIORITY_MEDIUM,
+            $data
         );
     }
 
@@ -160,6 +441,108 @@ class ExeatNotificationService
     }
 
     /**
+     * Send staff comment notification to a specific student via email and SMS.
+     * The notification is only sent to the student associated with the exeat request.
+     * Email uses full template, SMS uses only the raw comment for character efficiency.
+     */
+    public function sendStaffCommentNotification(
+        ExeatRequest $exeatRequest,
+        Staff $staff,
+        string $comment
+    ): Collection {
+        // Only send to the student recipient
+        $recipients = [
+            [
+                'type' => 'student', // Use simple string instead of class constant
+                'id' => $exeatRequest->student_id
+            ]
+        ];
+
+        // Get student details
+        $student = \App\Models\Student::find($exeatRequest->student_id);
+        $studentName = "{$student->fname} {$student->lname}";
+        $staffName = "{$staff->fname} {$staff->lname}";
+
+        // Get staff role based on exeat workflow
+        $staffRoles = $staff->exeatRoles()->with('role')->get();
+        $roleDisplayNames = $staffRoles->pluck('role.display_name')->toArray();
+
+        // Map status names to more user-friendly titles
+        $statusTitles = [
+            'cmd' => 'Chief Medical Director',
+            'secretary' => 'Secretary of Students Affairs',
+            'dean' => 'Dean of Students Affairs',
+            'deputy-dean' => 'Deputy Dean of Students Affairs',
+            'hostel_admin' => 'Hostel Administrator',
+            'security' => 'Security Officer',
+            'admin' => 'Administrator'
+        ];
+
+        // Get the appropriate office title based on staff roles
+        $staffOffice = 'Staff';
+        foreach ($staffRoles as $roleAssignment) {
+            $roleName = $roleAssignment->role->name;
+            if (isset($statusTitles[$roleName])) {
+                $staffOffice = $statusTitles[$roleName];
+                break;
+            }
+        }
+
+        // Create full template for email (with proper formatting)
+        $emailMessage = $comment;
+        if (!str_contains($comment, "signed: {$staffName}")) {
+            $emailMessage .= "\n\nThank you,\nsigned: {$staffName}, {$staffOffice}";
+        }
+
+        // SMS message is just the raw comment (no template, no student name)
+        $smsMessage = $comment;
+
+        $title = "Comment from {$staffName}";
+
+        // Create the in-app notification with email message (full template)
+        $notifications = $this->createNotification(
+            $exeatRequest,
+            $recipients,
+            ExeatNotification::TYPE_STAFF_COMMENT,
+            $title,
+            $emailMessage,
+            ExeatNotification::PRIORITY_HIGH,
+            [
+                'status' => $exeatRequest->status,
+                'staff_id' => $staff->id,
+                'staff_name' => $staffName,
+                'staff_office' => $staffOffice,
+                'raw_comment' => $comment
+            ]
+        );
+
+        // Handle email and SMS delivery separately with different messages
+        foreach ($notifications as $notification) {
+            // Deliver email with full template
+            $this->deliveryService->deliverNotification($notification, 'email');
+
+            // Create a separate SMS notification with just the raw comment
+            $smsNotification = $this->createStaffCommentSmsNotification(
+                $exeatRequest, 
+                $student, 
+                $smsMessage
+            );
+            
+            // Deliver SMS with raw comment only
+            $this->deliveryService->deliverNotification($smsNotification, 'sms');
+
+            // Add email to notification's delivery methods for tracking
+            if (!in_array('email', $notification->delivery_methods ?? [])) {
+                $deliveryMethods = $notification->delivery_methods ?? [];
+                $deliveryMethods[] = 'email';
+                $notification->update(['delivery_methods' => $deliveryMethods]);
+            }
+        }
+
+        return $notifications;
+    }
+
+    /**
      * Get recipients for stage change notifications.
      */
     protected function getStageChangeRecipients(ExeatRequest $exeatRequest, string $newStatus): array
@@ -178,12 +561,16 @@ class ExeatNotificationService
                 $recipients = array_merge($recipients, $this->getCMDStaff());
                 break;
 
-            case 'deputy-dean_review':
-                $recipients = array_merge($recipients, $this->getDeputyDeanStaff());
+            case 'secretary_review':
+                $recipients = array_merge($recipients, $this->getSecretaryStaff());
                 break;
 
             case 'parent_consent':
-                // Parents do not receive notifications - removed parent recipients
+                // Add parent as recipient for parent consent notifications
+                $recipients[] = [
+                    'type' => ExeatNotification::RECIPIENT_PARENT,
+                    'id' => $exeatRequest->student_id // Use student_id as parent identifier
+                ];
                 break;
 
             case 'dean_review':
@@ -213,8 +600,8 @@ class ExeatNotificationService
         switch ($role) {
             case 'cmd':
                 return $this->getCMDStaff();
-            case 'deputy_dean':
-                return $this->getDeputyDeanStaff();
+            case 'secretary':
+                return $this->getSecretaryStaff();
             case 'dean':
                 return $this->getDeanStaff();
             case 'hostel_admin':
@@ -233,7 +620,7 @@ class ExeatNotificationService
     {
         switch ($reminderType) {
             case 'parent_consent_pending':
-                return $this->getDeputyDeanStaff();
+                return $this->getSecretaryStaff();
             case 'approval_overdue':
                 return $this->getApprovalRecipients($exeatRequest, $exeatRequest->status);
             case 'return_reminder':
@@ -258,7 +645,7 @@ class ExeatNotificationService
             ]],
             $this->getAdminStaff(),
             $this->getDeanStaff(),
-            $this->getDeputyDeanStaff()
+            $this->getSecretaryStaff()
         );
     }
 
@@ -271,7 +658,7 @@ class ExeatNotificationService
         $statusMap = [
             'pending' => 'Pending Review',
             'cmd_review' => 'CMD Review',
-            'deputy-dean_review' => 'Deputy Dean Review',
+            'secretary_review' => 'Secretary Review',
             'parent_consent' => 'Parent Consent',
             'dean_review' => 'Dean Review',
             'approved' => 'Approved',
@@ -297,9 +684,7 @@ class ExeatNotificationService
         }
 
         return sprintf(
-            "Exeat request #%s for %s has been updated from '%s' to '%s'. Please check your dashboard for details.",
-            $exeatRequest->id,
-            $studentInfo,
+            "Your exeat request status has changed from '%s' to '%s'. Please check your dashboard for more details.",
             $statusMap[$oldStatus] ?? $oldStatus,
             $statusMap[$newStatus] ?? $newStatus
         );
@@ -313,7 +698,7 @@ class ExeatNotificationService
         $student = $exeatRequest->student;
         $roleMap = [
             'cmd' => 'CMD',
-            'deputy_dean' => 'Deputy Dean',
+            'secretary' => 'Secretary',
             'dean' => 'Dean',
             'hostel_admin' => 'Hostel Administrator',
             'security' => 'Security'
@@ -386,10 +771,10 @@ class ExeatNotificationService
         })->toArray();
     }
 
-    protected function getDeputyDeanStaff(): array
+    protected function getSecretaryStaff(): array
     {
         return Staff::whereHas('exeat_roles', function ($query) {
-            $query->where('name', 'deputy_dean');
+            $query->where('name', 'secretary');
         })->get()->map(function ($staff) {
             return [
                 'type' => ExeatNotification::RECIPIENT_STAFF,
@@ -412,12 +797,39 @@ class ExeatNotificationService
 
     protected function getHostelStaff(ExeatRequest $exeatRequest): array
     {
-        // Get hostel admin for the student's hostel
-        return Staff::whereHas('exeat_roles', function ($query) {
-            $query->where('name', 'hostel_admin');
+        // Get specific hostel admin for the student's accommodation
+        $studentAccommodation = $exeatRequest->student_accommodation;
+        
+        if (!empty($studentAccommodation)) {
+            // Find the hostel by name
+            $hostel = \App\Models\VunaAccomodation::where('name', $studentAccommodation)->first();
+            
+            if ($hostel) {
+                // Get staff assigned to this specific hostel
+                $assignedStaff = \App\Models\HostelAdminAssignment::where('vuna_accomodation_id', $hostel->id)
+                    ->where('status', 'active')
+                    ->with('staff')
+                    ->get();
+                
+                if ($assignedStaff->isNotEmpty()) {
+                    return $assignedStaff->map(function ($assignment) {
+                        return [
+                            'type' => 'staff',
+                            'id' => $assignment->staff_id
+                        ];
+                    })->toArray();
+                }
+            }
+        }
+        
+        // Fallback: Get all hostel admins if no specific assignment found
+        return Staff::whereHas('exeatRoles', function ($query) {
+            $query->whereHas('role', function ($roleQuery) {
+                $roleQuery->where('name', 'hostel_admin');
+            });
         })->get()->map(function ($staff) {
             return [
-                'type' => ExeatNotification::RECIPIENT_STAFF,
+                'type' => 'staff',
                 'id' => $staff->id
             ];
         })->toArray();
@@ -530,12 +942,7 @@ class ExeatNotificationService
         $studentName = $student ? "{$student->fname} {$student->lname}" : 'Student';
         $title = 'Exeat Request Submitted Successfully';
         $message = sprintf(
-            "Dear %s,\n\nYour exeat request has been submitted successfully and is now under review.\n\nRequest Details:\n- Reason: %s\n- Destination: %s\n- Departure Date: %s\n- Return Date: %s\n- Current Status: %s\n\nYou will receive notifications as your request progresses through the approval stages.\n\nThank you.",
-            $studentName,
-            $exeatRequest->reason,
-            $exeatRequest->destination,
-            \Carbon\Carbon::parse($exeatRequest->departure_date)->format('M d, Y'),
-            \Carbon\Carbon::parse($exeatRequest->return_date)->format('M d, Y'),
+            "Your exeat request has been submitted successfully. Current status: %s. Please check your dashboard for more details.",
             str_replace('_', ' ', ucwords($exeatRequest->status, '_'))
         );
 
@@ -563,20 +970,13 @@ class ExeatNotificationService
         $studentName = $student ? "{$student->fname} {$student->lname}" : 'Student';
         $title = 'Exeat Request Rejected';
 
-        $message = sprintf(
-            "Dear %s,\n\nWe regret to inform you that your exeat request has been rejected.\n\nRequest Details:\n- Reason: %s\n- Destination: %s\n- Departure Date: %s\n- Return Date: %s",
-            $studentName,
-            $exeatRequest->reason,
-            $exeatRequest->destination,
-            \Carbon\Carbon::parse($exeatRequest->departure_date)->format('M d, Y'),
-            \Carbon\Carbon::parse($exeatRequest->return_date)->format('M d, Y')
-        );
+        $message = "Your exeat request has been rejected.";
 
         if ($comment) {
-            $message .= "\n\nReason for rejection: {$comment}";
+            $message .= " Reason: {$comment}.";
         }
 
-        $message .= "\n\nIf you have any questions, please contact the appropriate office for clarification.\n\nThank you.";
+        $message .= " Please check your dashboard for more details.";
 
         $this->createNotification(
             $exeatRequest,

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use App\Models\Staff;
+use App\Models\AuditLog;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 
@@ -134,11 +135,40 @@ class AdminStaffController extends Controller
         if ($existing) {
             return response()->json(['message' => 'Staff already has this exeat role.'], 409);
         }
-        $staff->exeatRoles()->create([
+        $roleAssignment = $staff->exeatRoles()->create([
             'exeat_role_id' => $validated['exeat_role_id'],
             'assigned_at' => now(),
         ]);
-        return response()->json(['message' => 'Exeat role assigned to staff.']);
+
+        // Refresh staff data with updated roles to prevent frontend caching issues
+        $staff->load(['exeatRoles.role', 'assignedRoles.role']);
+        
+        // Get role information for audit log
+        $role = \App\Models\ExeatRole::find($validated['exeat_role_id']);
+        
+        // Create audit log for role assignment
+        AuditLog::create([
+            'staff_id' => $request->user()->id,
+            'student_id' => null,
+            'action' => 'role_assigned',
+            'target_type' => 'staff_role',
+            'target_id' => $roleAssignment->id,
+            'details' => json_encode([
+                'assigned_staff_id' => $id,
+                'assigned_staff_name' => $staff->fname . ' ' . $staff->lname,
+                'role_id' => $validated['exeat_role_id'],
+                'role_name' => $role->name ?? 'Unknown',
+                'role_display_name' => $role->display_name ?? 'Unknown',
+                'assigned_by' => $request->user()->fname . ' ' . $request->user()->lname,
+                'assigned_at' => $roleAssignment->assigned_at
+            ])
+        ]);
+        
+        return response()->json([
+            'message' => 'Exeat role assigned to staff.',
+            'staff' => $staff,
+            'updated_at' => now()->toISOString()
+        ]);
     }
 
     // DELETE /api/admin/staff/{id}/unassign-exeat-role
@@ -155,7 +185,37 @@ class AdminStaffController extends Controller
         if (!$role) {
             return response()->json(['message' => 'Exeat role not assigned to staff.'], 404);
         }
+        
+        // Store role info for audit log before deletion
+        $roleInfo = $role->load('role');
+        
+        // Create audit log for role unassignment
+        AuditLog::create([
+            'staff_id' => $request->user()->id,
+            'student_id' => null,
+            'action' => 'role_unassigned',
+            'target_type' => 'staff_role',
+            'target_id' => $role->id,
+            'details' => json_encode([
+                'assigned_staff_id' => $id,
+                'assigned_staff_name' => $staff->fname . ' ' . $staff->lname,
+                'role_id' => $validated['exeat_role_id'],
+                'role_name' => $roleInfo->role->name ?? 'Unknown',
+                'role_display_name' => $roleInfo->role->display_name ?? 'Unknown',
+                'removed_by' => $request->user()->fname . ' ' . $request->user()->lname,
+                'assigned_at' => $role->assigned_at
+            ])
+        ]);
+        
         $role->delete();
-        return response()->json(['message' => 'Exeat role unassigned from staff.']);
+
+        // Refresh staff data with updated roles to prevent frontend caching issues
+        $staff->load(['exeatRoles.role', 'assignedRoles.role']);
+        
+        return response()->json([
+            'message' => 'Exeat role unassigned from staff.',
+            'staff' => $staff,
+            'updated_at' => now()->toISOString()
+        ]);
     }
 }

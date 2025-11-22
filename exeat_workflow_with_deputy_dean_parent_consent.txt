@@ -1,7 +1,7 @@
 EXEAT WORKFLOW SYSTEM - COMPLETE FLOW WITH DEPUTY DEAN PARENT CONSENT FEATURE
 ================================================================================
 
-This document describes the complete exeat workflow from beginning to end, including the new feature where the Deputy Dean can act as a parent for parent consent after the deputy-dean_review stage.
+This document describes the complete exeat workflow from beginning to end, including the new feature where the Deputy Dean can act as a parent for parent consent after the secretary_review stage.
 
 1. INITIAL EXEAT REQUEST CREATION
 ==================================
@@ -20,7 +20,7 @@ STEP 1: Student Creates Exeat Request
 - System determines if request is medical-related based on category
 - System creates ExeatRequest record with initial status:
   * Medical requests: status = 'cmd_review'
-  * Non-medical requests: status = 'deputy-dean_review'
+  * Non-medical requests: status = 'secretary_review'
 - System creates first ExeatApproval record:
   * Medical: role = 'medical_officer', status = 'pending'
   * Non-medical: role = 'deputy_dean', status = 'pending'
@@ -38,7 +38,7 @@ IF request is medical:
 - CMD can:
   a) APPROVE: 
      - ExeatApproval.status = 'approved'
-     - ExeatRequest.status advances to 'deputy-dean_review'
+     - ExeatRequest.status advances to 'secretary_review'
      - Audit log: action = 'approve', staff_id = CMD's ID
   b) REJECT:
      - ExeatApproval.status = 'rejected'
@@ -48,7 +48,7 @@ IF request is medical:
 
 STAGE 2: Deputy Dean Review
 ---------------------------
-- Status: 'deputy-dean_review'
+- Status: 'secretary_review'
 - Deputy Dean reviews the request
 - Deputy Dean can:
   a) APPROVE:
@@ -210,7 +210,7 @@ For the new Deputy Dean parent consent feature:
 
 Each role has specific permissions:
 - CMD: Can approve/reject at 'cmd_review' stage
-- Deputy Dean: Can approve/reject at 'deputy-dean_review' stage AND act as parent at 'parent_consent' stage
+- Deputy Dean: Can approve/reject at 'secretary_review' stage AND act as parent at 'parent_consent' stage
 - Dean: Can approve/reject at 'dean_review' stage
 - Hostel Admin: Can signout/signin at hostel stages
 - Security Officer: Can signout/signin at security stages
@@ -649,7 +649,7 @@ Template Variables:
 
 The new feature allows the Deputy Dean to act as a parent during the parent_consent stage:
 
-1. After deputy-dean_review stage, request moves to parent_consent
+1. After secretary_review stage, request moves to parent_consent
 2. Parent receives consent request via email/SMS/WhatsApp
 3. If parent doesn't respond, Deputy Dean can access parent consent interface
 4. Deputy Dean can approve or reject on behalf of parent

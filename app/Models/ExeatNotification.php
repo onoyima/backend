@@ -67,11 +67,13 @@ class ExeatNotification extends Model
     const TYPE_EMERGENCY = 'emergency';
     const TYPE_REQUEST_SUBMITTED = 'request_submitted';
     const TYPE_REJECTION = 'rejection';
+    const TYPE_STAFF_COMMENT = 'staff_comment';
 
     // Recipient types
     const RECIPIENT_STUDENT = 'student';
     const RECIPIENT_STAFF = 'staff';
     const RECIPIENT_ADMIN = 'admin';
+    const RECIPIENT_PARENT = 'parent';
 
     // Priority levels
     const PRIORITY_LOW = 'low';

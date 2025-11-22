@@ -4,19 +4,22 @@ namespace App\Console;
 
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Console\Kernel as ConsoleKernel;
+use Illuminate\Support\Facades\App;
+use Illuminate\Support\Facades\Log;
 
 class Kernel extends ConsoleKernel
 {
-  protected function schedule(Schedule $schedule)
-{
-    $schedule->call(function () {
-        try {
-            App::make(BirthdayController::class)->sendBirthdayEmails();
-        } catch (\Exception $e) {
-            Log::error('Birthday email sending failed: ' . $e->getMessage());
-        }
-    })->timezone('Africa/Lagos')->dailyAt('07:00');
-}
+    protected function schedule(Schedule $schedule): void
+    {
+        // Monitor overdue exeats every hour (debts created on return)
+        $schedule->command('exeat:check-overdue')
+            ->hourly();
+        
+        // Automatically expire overdue exeat requests every hour
+        $schedule->command('exeat:expire-overdue')
+            ->hourly()
+            ->withoutOverlapping();
+    }
 
 
     protected function commands()
