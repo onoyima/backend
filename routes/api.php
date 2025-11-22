@@ -242,7 +242,8 @@ Route::middleware('auth:sanctum')->group(function () {
     // Admin notification routes
     Route::prefix('notifications')->group(function () {
         Route::get('/', [AdminNotificationController::class, 'index']);
-        Route::get('/statistics', [AdminNotificationController::class, 'getStatistics']);
+        Route::get('/statistics', [AdminNotificationController::class, 'getStats']);
+        Route::get('/unread-count', [AdminNotificationController::class, 'unreadCount']);
         Route::post('/bulk-send', [AdminNotificationController::class, 'bulkSendNotifications']);
         Route::get('/delivery-logs', [AdminNotificationController::class, 'getDeliveryLogs']);
         Route::post('/retry-failed', [AdminNotificationController::class, 'retryFailedDeliveries']);
