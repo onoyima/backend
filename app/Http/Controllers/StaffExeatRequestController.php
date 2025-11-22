@@ -12,6 +12,7 @@ use App\Services\ExeatWorkflowService;
 use App\Http\Requests\StaffExeatApprovalRequest;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
+use Dompdf\Dompdf;
 
 class StaffExeatRequestController extends Controller
 {
@@ -423,6 +424,7 @@ class StaffExeatRequestController extends Controller
             $roleNames = $user->exeatRoles()->with('role')->get()->pluck('role.name')->toArray();
             $checked = $request->input('checked');
             $search = trim((string) $request->input('search', ''));
+            $format = strtolower((string) $request->input('format', 'csv'));
             if (!(in_array('admin', $roleNames) || in_array('hostel_admin', $roleNames))) {
                 return response()->json(['message' => 'Unauthorized.'], 403);
             }
@@ -466,33 +468,98 @@ class StaffExeatRequestController extends Controller
                     }
                     $rows = $query->orderBy('security_signouts.signout_time', 'desc')->get();
                 }
+            } else {
+                if ($search !== '') {
+                    $query->where(function($q) use ($search) {
+                        $q->where('exeat_requests.matric_no', 'like', "%{$search}%")
+                          ->orWhere('students.fname', 'like', "%{$search}%")
+                          ->orWhere('students.lname', 'like', "%{$search}%");
+                    });
+                }
+                if ($checked === 'in') {
+                    $query->whereNotNull('security_signouts.signin_time');
+                } elseif ($checked === 'out') {
+                    $query->whereNotNull('security_signouts.signout_time')
+                          ->whereNull('security_signouts.signin_time');
+                }
+                $rows = $query->orderBy('security_signouts.signout_time', 'desc')->get();
             }
-
-            $headers = [
-                'Content-Type' => 'text/csv',
-                'Content-Disposition' => 'attachment; filename="gate_events.csv"'
-            ];
-
-            $callback = function () use ($rows) {
-                $out = fopen('php://output', 'w');
-                fputcsv($out, ['matric_no', 'student_name', 'hostel', 'checked_out', 'checked_in', 'departure_date', 'return_date', 'actual_returned_date']);
+            if ($format === 'xls') {
+                $html = '<table border="1" cellspacing="0" cellpadding="4">'
+                    . '<thead><tr>'
+                    . '<th>matric_no</th><th>student_name</th><th>hostel</th><th>checked_out</th><th>checked_in</th><th>departure_date</th><th>return_date</th><th>actual_returned_date</th>'
+                    . '</tr></thead><tbody>';
                 foreach ($rows as $r) {
                     $name = trim(($r->fname ?? '') . ' ' . ($r->lname ?? ''));
-                    fputcsv($out, [
-                        $r->matric_no,
-                        $name,
-                        $r->hostel,
-                        $r->signout_time,
-                        $r->signin_time,
-                        $r->departure_date,
-                        $r->return_date,
-                        $r->signin_time,
-                    ]);
+                    $html .= '<tr>'
+                        . '<td>'.htmlspecialchars($r->matric_no ?? '').'</td>'
+                        . '<td>'.htmlspecialchars($name).'</td>'
+                        . '<td>'.htmlspecialchars($r->hostel ?? '').'</td>'
+                        . '<td>'.htmlspecialchars($r->signout_time ?? '').'</td>'
+                        . '<td>'.htmlspecialchars($r->signin_time ?? '').'</td>'
+                        . '<td>'.htmlspecialchars($r->departure_date ?? '').'</td>'
+                        . '<td>'.htmlspecialchars($r->return_date ?? '').'</td>'
+                        . '<td>'.htmlspecialchars($r->signin_time ?? '').'</td>'
+                        . '</tr>';
                 }
-                fclose($out);
-            };
-
-            return response()->stream($callback, 200, $headers);
+                $html .= '</tbody></table>';
+                return response($html, 200, [
+                    'Content-Type' => 'application/vnd.ms-excel; charset=UTF-8',
+                    'Content-Disposition' => 'attachment; filename="gate_events.xls"'
+                ]);
+            } elseif ($format === 'pdf') {
+                $html = '<html><head><meta charset="UTF-8"><style>table{width:100%;border-collapse:collapse}th,td{border:1px solid #333;padding:4px;font-size:12px}th{background:#eee;text-align:left}</style></head><body>'
+                    . '<h3>Gate Events</h3>'
+                    . '<table><thead><tr>'
+                    . '<th>matric_no</th><th>student_name</th><th>hostel</th><th>checked_out</th><th>checked_in</th><th>departure_date</th><th>return_date</th><th>actual_returned_date</th>'
+                    . '</tr></thead><tbody>';
+                foreach ($rows as $r) {
+                    $name = trim(($r->fname ?? '') . ' ' . ($r->lname ?? ''));
+                    $html .= '<tr>'
+                        . '<td>'.htmlspecialchars($r->matric_no ?? '').'</td>'
+                        . '<td>'.htmlspecialchars($name).'</td>'
+                        . '<td>'.htmlspecialchars($r->hostel ?? '').'</td>'
+                        . '<td>'.htmlspecialchars($r->signout_time ?? '').'</td>'
+                        . '<td>'.htmlspecialchars($r->signin_time ?? '').'</td>'
+                        . '<td>'.htmlspecialchars($r->departure_date ?? '').'</td>'
+                        . '<td>'.htmlspecialchars($r->return_date ?? '').'</td>'
+                        . '<td>'.htmlspecialchars($r->signin_time ?? '').'</td>'
+                        . '</tr>';
+                }
+                $html .= '</tbody></table></body></html>';
+                $dompdf = new Dompdf();
+                $dompdf->loadHtml($html, 'UTF-8');
+                $dompdf->setPaper('A4', 'landscape');
+                $dompdf->render();
+                return response($dompdf->output(), 200, [
+                    'Content-Type' => 'application/pdf',
+                    'Content-Disposition' => 'attachment; filename="gate_events.pdf"'
+                ]);
+            } else {
+                $headers = [
+                    'Content-Type' => 'text/csv',
+                    'Content-Disposition' => 'attachment; filename="gate_events.csv"'
+                ];
+                $callback = function () use ($rows) {
+                    $out = fopen('php://output', 'w');
+                    fputcsv($out, ['matric_no', 'student_name', 'hostel', 'checked_out', 'checked_in', 'departure_date', 'return_date', 'actual_returned_date']);
+                    foreach ($rows as $r) {
+                        $name = trim(($r->fname ?? '') . ' ' . ($r->lname ?? ''));
+                        fputcsv($out, [
+                            $r->matric_no,
+                            $name,
+                            $r->hostel,
+                            $r->signout_time,
+                            $r->signin_time,
+                            $r->departure_date,
+                            $r->return_date,
+                            $r->signin_time,
+                        ]);
+                    }
+                    fclose($out);
+                };
+                return response()->stream($callback, 200, $headers);
+            }
         } catch (\Throwable $e) {
             \Log::error('StaffExeatRequestController@gateEventsExport failed', [
                 'error' => $e->getMessage(),
