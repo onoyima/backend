@@ -158,22 +158,7 @@ class ExeatWorkflowService
                 $exeatRequest->status = 'security_signout';
                 break;
             case 'security_signout':
-                // Check if it's a holiday category - go directly to completed
-                $categoryName = $exeatRequest->category ? strtolower($exeatRequest->category->name) : '';
-                $isHolidayCategory = $categoryName === 'holiday';
-
-                if ($isHolidayCategory) {
-                    // Holiday exeats: go directly to completed (no signin required)
-                    $exeatRequest->status = 'completed';
-                    Log::info('WorkflowService: Holiday exeat completed after security signout', [
-                        'exeat_id' => $exeatRequest->id,
-                        'category' => $exeatRequest->category->name,
-                        'final_status' => 'completed'
-                    ]);
-                } else {
-                    // All other categories: proceed to security_signin
-                    $exeatRequest->status = 'security_signin';
-                }
+                $exeatRequest->status = 'security_signin';
                 break;
             case 'security_signin':
                 $exeatRequest->status = $hostelEnabled ? 'hostel_signin' : 'completed';
