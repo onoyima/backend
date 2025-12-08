@@ -20,6 +20,89 @@ class ExeatNotificationService
         $this->deliveryService = $deliveryService;
     }
 
+    public function sendHostelGateEventNotificationToAssignedAdmins(ExeatRequest $exeatRequest, string $event): Collection
+    {
+        $hostelName = $exeatRequest->student_accommodation;
+        $normalized = is_string($hostelName) ? trim(strtolower($hostelName)) : '';
+
+        // Try matching by hostel name (case-insensitive, tolerant to variations)
+        $assignments = \App\Models\HostelAdminAssignment::where(function ($q) {
+                $q->where('status', 'active')->orWhereNull('status');
+            })
+            ->whereHas('hostel', function ($q) use ($normalized, $hostelName) {
+                $q->whereRaw('LOWER(name) = ?', [$normalized])
+                  ->orWhere('name', 'LIKE', $hostelName . '%')
+                  ->orWhere('name', 'LIKE', '%' . $hostelName . '%');
+            })
+            ->with('staff')
+            ->get();
+
+        // Fallback: use current accommodation ID from history
+        if ($assignments->isEmpty() && $exeatRequest->student_id) {
+            $accommodationHistory = \App\Models\VunaAccomodationHistory::getCurrentAccommodationForStudent($exeatRequest->student_id);
+            $accommodationId = $accommodationHistory?->vuna_accomodation_id ?? null;
+            if ($accommodationId) {
+                $assignments = \App\Models\HostelAdminAssignment::where(function ($q) {
+                        $q->where('status', 'active')->orWhereNull('status');
+                    })
+                    ->where('vuna_accomodation_id', $accommodationId)
+                    ->with('staff')
+                    ->get();
+            }
+        }
+
+        // Fallback: resolve accommodation by name to ID and then match by ID
+        if ($assignments->isEmpty() && !empty($normalized)) {
+            $accommodation = \App\Models\VunaAccomodation::whereRaw('LOWER(name) = ?', [$normalized])
+                ->first();
+            if ($accommodation) {
+                $assignments = \App\Models\HostelAdminAssignment::where(function ($q) {
+                        $q->where('status', 'active')->orWhereNull('status');
+                    })
+                    ->where('vuna_accomodation_id', $accommodation->id)
+                    ->with('staff')
+                    ->get();
+            }
+        }
+
+        $recipients = [];
+        foreach ($assignments as $assignment) {
+            if ($assignment->staff) {
+                $recipients[] = ['type' => 'staff', 'id' => $assignment->staff->id];
+            }
+        }
+
+        if (empty($recipients)) {
+            \Log::warning('No hostel admin recipients found for gate event', [
+                'exeat_id' => $exeatRequest->id,
+                'student_accommodation' => $exeatRequest->student_accommodation,
+            ]);
+            return collect();
+        }
+
+        $student = $exeatRequest->student;
+        $fullName = trim(($student->fname ?? '') . ' ' . ($student->lname ?? ''));
+        $matric = $exeatRequest->matric_no ?? '';
+        $title = 'Gate Event';
+        $message = $event === 'signout'
+            ? "Student with Reg No: {$matric} — {$fullName} — from your hostel has been signed out at the gate."
+            : "Student with Reg No: {$matric} — {$fullName} — from your hostel has been signed back into the school.";
+
+        return $this->createNotification(
+            $exeatRequest,
+            $recipients,
+            ExeatNotification::TYPE_REMINDER,
+            $title,
+            $message,
+            ExeatNotification::PRIORITY_HIGH,
+            [
+                'event' => $event === 'signout' ? 'gate_signout' : 'gate_signin',
+                'play_sound' => true,
+                'audio_url' => url('/api/notifications/alert-audio'),
+            ]
+        );
+    }
+
     /**
      * Send notification to the student when a special dean override is applied.
      */

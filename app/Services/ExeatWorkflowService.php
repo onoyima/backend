@@ -98,6 +98,7 @@ class ExeatWorkflowService
     protected function advanceStage(ExeatRequest $exeatRequest)
     {
         $oldStatus = $exeatRequest->status;
+        $hostelEnabled = (bool) config('app.hostel_stages_enabled');
 
         switch ($exeatRequest->status) {
             case 'pending':
@@ -150,33 +151,17 @@ class ExeatWorkflowService
                         'skipped_to' => 'security_signout'
                     ]);
                 } else {
-                    // All other categories: proceed to hostel_signout
-                    $exeatRequest->status = 'hostel_signout';
+                    $exeatRequest->status = $hostelEnabled ? 'hostel_signout' : 'security_signout';
                 }
                 break;
             case 'hostel_signout':
                 $exeatRequest->status = 'security_signout';
                 break;
             case 'security_signout':
-                // Check if it's a holiday category - go directly to completed
-                $categoryName = $exeatRequest->category ? strtolower($exeatRequest->category->name) : '';
-                $isHolidayCategory = $categoryName === 'holiday';
-
-                if ($isHolidayCategory) {
-                    // Holiday exeats: go directly to completed (no signin required)
-                    $exeatRequest->status = 'completed';
-                    Log::info('WorkflowService: Holiday exeat completed after security signout', [
-                        'exeat_id' => $exeatRequest->id,
-                        'category' => $exeatRequest->category->name,
-                        'final_status' => 'completed'
-                    ]);
-                } else {
-                    // All other categories: proceed to security_signin
-                    $exeatRequest->status = 'security_signin';
-                }
+                $exeatRequest->status = 'security_signin';
                 break;
             case 'security_signin':
-                $exeatRequest->status = 'hostel_signin';
+                $exeatRequest->status = $hostelEnabled ? 'hostel_signin' : 'completed';
                 break;
             case 'hostel_signin':
                 $exeatRequest->status = 'completed';
@@ -186,6 +171,10 @@ class ExeatWorkflowService
                 return;
         }
         $exeatRequest->save();
+
+        if ($oldStatus !== $exeatRequest->status) {
+            // Gate event notifications are handled in handleSpecialStageActions during actual security actions
+        }
 
         // Send stage change notification to student
         try {
@@ -1001,21 +990,38 @@ EOT;
     private function handleSpecialStageActions(ExeatRequest $exeatRequest, ExeatApproval $approval, $oldStatus)
     {
         // Handle security signout
-        if ($oldStatus === 'security_signout' && $approval->role === 'security') {
-            SecuritySignout::create([
-                'exeat_request_id' => $exeatRequest->id,
-                'signout_time' => now(),
-                'signin_time' => null,
-                'security_id' => $approval->staff_id,
-            ]);
+        if ($oldStatus === 'security_signout') {
+            $allowedRoles = ['security', 'admin', 'dean', 'deputy-dean'];
+            if (!in_array($approval->role, $allowedRoles)) {
+                Log::warning('Unauthorized role attempted security signout approval', [
+                    'exeat_id' => $exeatRequest->id,
+                    'attempted_role' => $approval->role,
+                    'staff_id' => $approval->staff_id
+                ]);
+            } else {
+                SecuritySignout::create([
+                    'exeat_request_id' => $exeatRequest->id,
+                    'signout_time' => now(),
+                    'signin_time' => null,
+                    'security_id' => $approval->staff_id,
+                ]);
 
-            // Send parent notification for sign-out
-            $this->sendParentNotification($exeatRequest, 'OUT');
+                // Send parent notification for sign-out
+                $this->sendParentNotification($exeatRequest, 'OUT');
 
-            Log::info('Security signed out student at gate', [
-                'exeat_id' => $exeatRequest->id,
-                'security_id' => $approval->staff_id
-            ]);
+                Log::info('Security signed out student at gate', [
+                    'exeat_id' => $exeatRequest->id,
+                    'security_id' => $approval->staff_id,
+                    'approving_role' => $approval->role
+                ]);
+
+                // Notify assigned hostel admins about gate sign-out
+                try {
+                    $this->notificationService->sendHostelGateEventNotificationToAssignedAdmins($exeatRequest, 'signout');
+                } catch (\Exception $e) {
+                    Log::error('Failed to notify hostel admins for gate signout (on action)', ['error' => $e->getMessage(), 'exeat_id' => $exeatRequest->id]);
+                }
+            }
         }
 
         // Handle security signin - Allow any role with permission to approve security signin
@@ -1059,6 +1065,13 @@ EOT;
                         'approving_staff_id' => $approval->staff_id,
                         'approving_role' => $approval->role
                     ]);
+
+                    // Notify assigned hostel admins about gate sign-in
+                    try {
+                        $this->notificationService->sendHostelGateEventNotificationToAssignedAdmins($exeatRequest, 'signin');
+                    } catch (\Exception $e) {
+                        Log::error('Failed to notify hostel admins for gate signin (on action)', ['error' => $e->getMessage(), 'exeat_id' => $exeatRequest->id]);
+                    }
                 }
             } else {
                 Log::warning('Unauthorized role attempted security signin approval', [

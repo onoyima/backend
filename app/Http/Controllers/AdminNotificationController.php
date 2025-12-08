@@ -33,6 +33,21 @@ class AdminNotificationController extends Controller
         $this->middleware('role:admin');
     }
 
+    public function unreadCount(): JsonResponse
+    {
+        $admin = Auth::user();
+        $staffCount = $this->notificationService->getUnreadCount(ExeatNotification::RECIPIENT_STAFF, $admin->id);
+        $adminCount = $this->notificationService->getUnreadCount(ExeatNotification::RECIPIENT_ADMIN, $admin->id);
+        $count = $staffCount + $adminCount;
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'unread_count' => $count
+            ]
+        ]);
+    }
+
     /**
      * Get all notifications with advanced filtering.
      */

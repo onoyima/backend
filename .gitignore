@@ -19,6 +19,7 @@
 /storage/*.key
 /storage/pail
 /vendor
+/vendorss/
 Homestead.json
 Homestead.yaml
 Thumbs.db
@@ -62,3 +63,5 @@ paystack_integration_documentation.txt
 SMS_NOTIFICATIONS_COMPLETE_LIST.md
 student_exeat_debt_api_documentation.txt
 vu_sessions.sql
+
+/front/

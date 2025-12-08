@@ -7,9 +7,18 @@ use App\Models\Staff;
 use App\Models\AuditLog;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
+use App\Models\ExeatRequest;
+use App\Models\ExeatNotification;
+use App\Services\ExeatNotificationService;
 
 class AdminStaffController extends Controller
 {
+    protected $notificationService;
+
+    public function __construct(ExeatNotificationService $notificationService)
+    {
+        $this->notificationService = $notificationService;
+    }
     // GET /api/admin/staff/assignments
     public function assignments()
     {
@@ -163,6 +172,28 @@ class AdminStaffController extends Controller
                 'assigned_at' => $roleAssignment->assigned_at
             ])
         ]);
+
+        // Notify staff of role update (live effect via SSE) — errors are non-blocking
+        try {
+            $dummyExeat = new ExeatRequest(['id' => 0]);
+            $this->notificationService->createNotification(
+                $dummyExeat,
+                [[
+                    'type' => ExeatNotification::RECIPIENT_STAFF,
+                    'id' => $staff->id
+                ]],
+                ExeatNotification::TYPE_REMINDER,
+                'Role Updated',
+                'Your staff roles have been updated and are now effective.',
+                ExeatNotification::PRIORITY_HIGH,
+                [ 'event' => 'roles_updated' ]
+            );
+        } catch (\Throwable $e) {
+            Log::warning('Role assigned but failed to send live SSE notification', [
+                'staff_id' => $staff->id,
+                'error' => $e->getMessage()
+            ]);
+        }
         
         return response()->json([
             'message' => 'Exeat role assigned to staff.',
@@ -211,7 +242,29 @@ class AdminStaffController extends Controller
 
         // Refresh staff data with updated roles to prevent frontend caching issues
         $staff->load(['exeatRoles.role', 'assignedRoles.role']);
-        
+
+        // Notify staff of role update removal (live effect via SSE) — errors are non-blocking
+        try {
+            $dummyExeat = new ExeatRequest(['id' => 0]);
+            $this->notificationService->createNotification(
+                $dummyExeat,
+                [[
+                    'type' => ExeatNotification::RECIPIENT_STAFF,
+                    'id' => $staff->id
+                ]],
+                ExeatNotification::TYPE_REMINDER,
+                'Role Updated',
+                'One of your staff roles was removed and your permissions updated.',
+                ExeatNotification::PRIORITY_MEDIUM,
+                [ 'event' => 'roles_updated' ]
+            );
+        } catch (\Throwable $e) {
+            Log::warning('Role unassigned but failed to send live SSE notification', [
+                'staff_id' => $staff->id,
+                'error' => $e->getMessage()
+            ]);
+        }
+
         return response()->json([
             'message' => 'Exeat role unassigned from staff.',
             'staff' => $staff,

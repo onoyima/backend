@@ -8,12 +8,17 @@ use App\Models\Staff;
 use App\Models\ExeatRole;
 use App\Models\StaffExeatRole;
 use App\Models\AuditLog;
+use App\Models\ExeatRequest;
+use App\Models\ExeatNotification;
+use App\Services\ExeatNotificationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class HostelAdminController extends Controller
 {
+    protected $notificationService;
+
     public function __construct()
     {
         $this->middleware('auth:sanctum');
@@ -86,10 +91,12 @@ class HostelAdminController extends Controller
                 ->first();
 
             if ($existingAssignment) {
+                $existingAssignment->load(['hostel','staff']);
                 return response()->json([
-                    'status' => 'error',
-                    'message' => 'This staff member is already assigned to this hostel.'
-                ], 422);
+                    'status' => 'success',
+                    'message' => 'Hostel admin assignment already exists.',
+                    'data' => $existingAssignment
+                ], 200);
             }
 
             // Create hostel assignment
@@ -149,6 +156,28 @@ class HostelAdminController extends Controller
                 'assigned_by' => $request->user()->id
             ]);
 
+            // Notify assigned staff of hostel assignment update (live via SSE) — errors are non-blocking
+            try {
+                $dummyExeat = new ExeatRequest(['id' => 0]);
+                app(ExeatNotificationService::class)->createNotification(
+                    $dummyExeat,
+                    [[
+                        'type' => ExeatNotification::RECIPIENT_STAFF,
+                        'id' => $validated['staff_id']
+                    ]],
+                    ExeatNotification::TYPE_REMINDER,
+                    'Hostel Assignment Updated',
+                    'Your hostel assignments were updated and are now effective.',
+                    ExeatNotification::PRIORITY_HIGH,
+                    [ 'event' => 'hostel_assignment_updated' ]
+                );
+            } catch (\Throwable $e) {
+                Log::warning('Hostel assignment created but failed to send live SSE notification', [
+                    'assignment_id' => $assignment->id,
+                    'error' => $e->getMessage()
+                ]);
+            }
+
             return response()->json([
                 'status' => 'success',
                 'message' => 'Hostel admin assignment created successfully.',
@@ -179,7 +208,7 @@ class HostelAdminController extends Controller
             'status' => 'required|in:active,inactive'
         ]);
 
-        $assignment = HostelAdminAssignment::findOrFail($id);
+        $assignment = HostelAdminAssignment::with(['hostel','staff'])->findOrFail($id);
         $oldStatus = $assignment->status;
         $assignment->update($validated);
 
@@ -206,6 +235,28 @@ class HostelAdminController extends Controller
             'updated_by' => $request->user()->id
         ]);
 
+        // Notify staff of hostel assignment status change (live via SSE) — errors are non-blocking
+        try {
+            $dummyExeat = new ExeatRequest(['id' => 0]);
+            app(ExeatNotificationService::class)->createNotification(
+                $dummyExeat,
+                [[
+                    'type' => ExeatNotification::RECIPIENT_STAFF,
+                    'id' => $assignment->staff_id
+                ]],
+                ExeatNotification::TYPE_REMINDER,
+                'Hostel Assignment Updated',
+                'Your hostel assignment status changed and is now effective.',
+                ExeatNotification::PRIORITY_MEDIUM,
+                [ 'event' => 'hostel_assignment_updated' ]
+            );
+        } catch (\Throwable $e) {
+            Log::warning('Hostel assignment status updated but failed to send live SSE notification', [
+                'assignment_id' => $assignment->id,
+                'error' => $e->getMessage()
+            ]);
+        }
+
         return response()->json([
             'status' => 'success',
             'message' => 'Hostel admin assignment updated successfully.',
@@ -218,8 +269,7 @@ class HostelAdminController extends Controller
      */
     public function destroy(Request $request, $id)
     {
-        $assignment = HostelAdminAssignment::findOrFail($id);
-        $assignment->update(['status' => 'inactive']);
+        $assignment = HostelAdminAssignment::with(['hostel', 'staff'])->findOrFail($id);
 
         // Create audit log for hostel assignment removal
         AuditLog::create([
@@ -237,11 +287,99 @@ class HostelAdminController extends Controller
             ])
         ]);
 
-        Log::info('Hostel admin assignment deactivated', [
+        // Perform hard delete
+        $assignment->delete();
+
+        Log::info('Hostel admin assignment deleted', [
             'assignment_id' => $id,
             'hostel_id' => $assignment->vuna_accomodation_id,
             'staff_id' => $assignment->staff_id
         ]);
+
+        // Notify staff of hostel assignment removal (live via SSE) — errors are non-blocking
+        try {
+            $dummyExeat = new ExeatRequest(['id' => 0]);
+            app(ExeatNotificationService::class)->createNotification(
+                $dummyExeat,
+                [[
+                    'type' => ExeatNotification::RECIPIENT_STAFF,
+                    'id' => $assignment->staff_id
+                ]],
+                ExeatNotification::TYPE_REMINDER,
+                'Hostel Assignment Updated',
+                'A hostel assignment was removed from your profile.',
+                ExeatNotification::PRIORITY_MEDIUM,
+                [ 'event' => 'hostel_assignment_updated' ]
+            );
+        } catch (\Throwable $e) {
+            Log::warning('Hostel assignment removed but failed to send live SSE notification', [
+                'assignment_id' => $assignment->id,
+                'error' => $e->getMessage()
+            ]);
+        }
+
+        // If no other active hostel assignments remain, and the hostel_admin role was not assigned individually,
+        // remove the hostel_admin exeat role from this staff
+        $hasOtherActiveAssignments = HostelAdminAssignment::where('staff_id', $assignment->staff_id)
+            ->where('status', 'active')
+            ->exists();
+
+        if (!$hasOtherActiveAssignments) {
+            $hostelAdminRole = ExeatRole::where('name', 'hostel_admin')->first();
+            if ($hostelAdminRole) {
+                // Determine if the hostel_admin role was assigned individually (via admin role assignment)
+                $manualRoleAssigned = false;
+                $roleAssignedLogs = AuditLog::where('action', 'role_assigned')
+                    ->where('target_type', 'staff_role')
+                    ->orderBy('id', 'desc')
+                    ->get();
+                foreach ($roleAssignedLogs as $log) {
+                    $details = json_decode($log->details ?? '[]', true);
+                    if (is_array($details)
+                        && ($details['assigned_staff_id'] ?? null) == $assignment->staff_id
+                        && (
+                            ($details['role_name'] ?? null) === 'hostel_admin'
+                            || ($details['role_id'] ?? null) == $hostelAdminRole->id
+                        )
+                    ) {
+                        $manualRoleAssigned = true;
+                        break;
+                    }
+                }
+
+                if (!$manualRoleAssigned) {
+                    StaffExeatRole::where('staff_id', $assignment->staff_id)
+                        ->where('exeat_role_id', $hostelAdminRole->id)
+                        ->delete();
+
+                    Log::info('Hostel admin exeat role removed due to assignment deletion and no remaining assignments', [
+                        'staff_id' => $assignment->staff_id,
+                        'exeat_role_id' => $hostelAdminRole->id
+                    ]);
+
+                    // Notify staff that their roles were updated — errors are non-blocking
+                    try {
+                        app(ExeatNotificationService::class)->createNotification(
+                            $dummyExeat,
+                            [[
+                                'type' => ExeatNotification::RECIPIENT_STAFF,
+                                'id' => $assignment->staff_id
+                            ]],
+                            ExeatNotification::TYPE_REMINDER,
+                            'Role Updated',
+                            'Your hostel admin role was removed because you have no active hostel assignments.',
+                            ExeatNotification::PRIORITY_MEDIUM,
+                            [ 'event' => 'roles_updated' ]
+                        );
+                    } catch (\Throwable $e) {
+                        Log::warning('Hostel admin role removed but failed to send live SSE notification', [
+                            'staff_id' => $assignment->staff_id,
+                            'error' => $e->getMessage()
+                        ]);
+                    }
+                }
+            }
+        }
 
         return response()->json([
             'status' => 'success',
