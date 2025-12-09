@@ -1754,10 +1754,8 @@ class StaffExeatRequestController extends Controller
         // Strict Status Mapping based on user mode
         $allowedStatuses = [];
         if ($type === 'sign_out') {
-            // Mode: Sign Out -> Only show students ready to leave
             $allowedStatuses = ['security_signout'];
         } elseif ($type === 'sign_in') {
-            // Mode: Sign In -> Only show students ready to return
             $allowedStatuses = ['security_signin'];
         } else {
             return response()->json(['exeat_requests' => []]);
@@ -1767,50 +1765,40 @@ class StaffExeatRequestController extends Controller
 
         // Define Search Logic Closure for reuse
         $searchLogic = function ($q) use ($search) {
-            $q->whereHas('student', function ($sq) use ($search) {
-                $sq->where('fname', 'like', "%{$search}%")
-                    ->orWhere('lname', 'like', "%{$search}%")
-                    ->orWhere('mname', 'like', "%{$search}%")
-                    ->orWhere('matric_no', 'like', "%{$search}%");
+            // Priority 1: Search matric_no on ExeatRequest (always populated)
+            $q->where(function ($subq) use ($search) {
+                $subq->where('matric_no', 'like', "%{$search}%");
 
+                // Priority 2: Search by ExeatRequest ID if numeric
                 if (is_numeric($search)) {
-                    $sq->orWhere('id', $search);
+                    $subq->orWhere('id', $search);
                 }
-            })
-                ->orWhere('matric_no', 'like', "%{$search}%");
+            });
 
-            if (is_numeric($search)) {
-                $q->orWhere('id', $search);
-            }
+            // Priority 3: Search in Student relationship by name only
+            $q->orWhereHas('student', function ($sq) use ($search) {
+                $sq->where(function ($studentQuery) use ($search) {
+                    $studentQuery->where('fname', 'like', "%{$search}%")
+                        ->orWhere('lname', 'like', "%{$search}%")
+                        ->orWhere('mname', 'like', "%{$search}%");
+
+                    // Search by Student ID if numeric
+                    if (is_numeric($search)) {
+                        $studentQuery->orWhere('id', $search);
+                    }
+                });
+            });
         };
 
-        // 1. Try Strict Search
-        $results = ExeatRequest::with(['student:id,fname,lname,mname,passport,matric_no', 'category:id,name'])
-            ->where('status', 'like', "%{$targetStatus}%")
+        // Strict Search - only show students with correct status
+        $results = ExeatRequest::with(['student:id,fname,lname,mname,passport', 'category:id,name'])
+            ->where('status', $targetStatus) // Use exact match for better performance
             ->where($searchLogic)
             ->orderBy('updated_at', 'desc')
             ->take(50)
             ->get();
 
-        // 2. Fallback: Broad Search (Debug) if no results found
-        if ($results->isEmpty()) {
-            $results = ExeatRequest::with(['student:id,fname,lname,mname,passport,matric_no', 'category:id,name'])
-                ->where($searchLogic)
-                ->orderBy('updated_at', 'desc')
-                ->take(10)
-                ->get();
-
-            if ($results->isNotEmpty()) {
-                $results->transform(function ($item) {
-                    if ($item->student) {
-                        $item->student->matric_no = $item->student->matric_no . " [STATUS: " . $item->status . "]";
-                    }
-                    return $item;
-                });
-            }
-        }
-
-        // Label action type strictly based on the REQUESTED mode
+        // Label action type
         $results->transform(function ($item) use ($type) {
             $item->action_type = $type;
             return $item;
