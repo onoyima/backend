@@ -60,10 +60,10 @@ Route::get('/login', function () {
 Route::post('/register', [AuthController::class, 'register']);
 
 Route::get('/parent/exeat-consent/{token}/{action}', [ParentConsentController::class, 'handleWebConsent']);
-Route::get('/parent/consent/{token}/approve', function($token) {
+Route::get('/parent/consent/{token}/approve', function ($token) {
     return app(App\Http\Controllers\ParentConsentController::class)->handleWebConsent($token, 'approve');
 });
-Route::get('/parent/consent/{token}/decline', function($token) {
+Route::get('/parent/consent/{token}/decline', function ($token) {
     return app(App\Http\Controllers\ParentConsentController::class)->handleWebConsent($token, 'decline');
 });
 
@@ -78,7 +78,7 @@ Route::get('student/debts/payment/verify', [StudentExeatDebtController::class, '
 Route::post('student/debts/payment/webhook', [StudentExeatDebtController::class, 'paymentWebhook'])->name('student.debts.payment.webhook');
 
 // Test redirect route
-Route::get('test-redirect', function() {
+Route::get('test-redirect', function () {
     $frontendUrl = config('app.frontend_url') . '/payment/result?' . http_build_query([
         'status' => 'test',
         'message' => 'This is a test redirect'
@@ -103,10 +103,10 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/exeat-requests', [StudentExeatRequestController::class, 'store']);
         Route::get('/exeat-requests/{id}', [StudentExeatRequestController::class, 'show']);
         Route::get('/exeat-requests/{id}/history', [StudentExeatRequestController::class, 'history']);
-      // ✅ ADD THESE TWO ROUTES:
+        // ✅ ADD THESE TWO ROUTES:
         Route::get('/exeat-categories', [StudentExeatRequestController::class, 'categories']);
         Route::get('/profile', [StudentExeatRequestController::class, 'profile']);
-        
+
         // Student debt routes
         Route::prefix('debts')->group(function () {
             Route::get('/', [StudentExeatDebtController::class, 'index']);
@@ -143,6 +143,9 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::post('/exeat-requests/{id}/send-comment', [StaffExeatRequestController::class, 'sendComment']);
         Route::get('/exeat-requests/{id}/history', [StaffExeatRequestController::class, 'history']);
         Route::get('/exeat-requests/role-history', [StaffExeatRequestController::class, 'roleHistory']);
+        Route::get('/exeat-requests/fast-track/search', [StaffExeatRequestController::class, 'searchActionable']);
+        Route::get('/exeat-requests/fast-track/list', [StaffExeatRequestController::class, 'getActionableList']);
+        Route::post('/exeat-requests/fast-track/execute', [StaffExeatRequestController::class, 'executeActionable']);
 
         // Staff exeat statistics routes
         Route::get('/exeat-statistics', [StaffExeatStatisticsController::class, 'getExeatStatistics']);
@@ -179,7 +182,10 @@ Route::middleware('auth:sanctum')->group(function () {
         ];
         $path = null;
         foreach ($candidates as $candidate) {
-            if (file_exists($candidate)) { $path = $candidate; break; }
+            if (file_exists($candidate)) {
+                $path = $candidate;
+                break;
+            }
         }
         if (!$path) {
             return response()->json(['message' => 'Audio not found'], 404);
@@ -205,73 +211,73 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // Admin routes
 
- Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
-    Route::get('/roles', [AdminRoleController::class, 'index']);
-    Route::post('/roles', [AdminRoleController::class, 'store']);
-    Route::put('/roles/{id}', [AdminRoleController::class, 'update']);
-    Route::delete('/roles/{id}', [AdminRoleController::class, 'destroy']);
+    Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
+        Route::get('/roles', [AdminRoleController::class, 'index']);
+        Route::post('/roles', [AdminRoleController::class, 'store']);
+        Route::put('/roles/{id}', [AdminRoleController::class, 'update']);
+        Route::delete('/roles/{id}', [AdminRoleController::class, 'destroy']);
 
-    Route::get('/staff', [AdminStaffController::class, 'index']);
-    Route::post('/staff', [AdminStaffController::class, 'store']);
-    Route::get('/staff/assignments', [AdminStaffController::class, 'assignments']);
-    Route::get('/staff/{id}', [AdminStaffController::class, 'show']);
-    Route::put('/staff/{id}', [AdminStaffController::class, 'update']);
-    Route::delete('/staff/{id}', [AdminStaffController::class, 'destroy']);
-    Route::post('/staff/{id}/assign-exeat-role', [AdminStaffController::class, 'assignExeatRole']);
-    Route::delete('/staff/{id}/unassign-exeat-role', [AdminStaffController::class, 'unassignExeatRole']);
-    Route::put('/exeat-requests/{id}', [AdminExeatController::class, 'edit']);
-    
-    // Student debt routes (Admin management)
-    Route::prefix('student-debts')->group(function () {
-        Route::get('/', [AdminStudentDebtController::class, 'index']);
-        Route::get('/{id}', [AdminStudentDebtController::class, 'show']);
-        Route::post('/{id}/clear', [AdminStudentDebtController::class, 'clearDebt']);
-    });
+        Route::get('/staff', [AdminStaffController::class, 'index']);
+        Route::post('/staff', [AdminStaffController::class, 'store']);
+        Route::get('/staff/assignments', [AdminStaffController::class, 'assignments']);
+        Route::get('/staff/{id}', [AdminStaffController::class, 'show']);
+        Route::put('/staff/{id}', [AdminStaffController::class, 'update']);
+        Route::delete('/staff/{id}', [AdminStaffController::class, 'destroy']);
+        Route::post('/staff/{id}/assign-exeat-role', [AdminStaffController::class, 'assignExeatRole']);
+        Route::delete('/staff/{id}/unassign-exeat-role', [AdminStaffController::class, 'unassignExeatRole']);
+        Route::put('/exeat-requests/{id}', [AdminExeatController::class, 'edit']);
 
-    // Hostel admin assignment routes
-    Route::prefix('hostel-assignments')->group(function () {
-        Route::get('/', [HostelAdminController::class, 'index']);
-        Route::get('/options', [HostelAdminController::class, 'getAssignmentOptions']);
-        Route::post('/', [HostelAdminController::class, 'store']);
-        Route::put('/{id}', [HostelAdminController::class, 'update']);
-        Route::delete('/{id}', [HostelAdminController::class, 'destroy']);
-        Route::get('/staff/{staffId}', [HostelAdminController::class, 'getStaffAssignments']);
-        Route::get('/hostel/{hostelId}', [HostelAdminController::class, 'getHostelStaff']);
-    });
+        // Student debt routes (Admin management)
+        Route::prefix('student-debts')->group(function () {
+            Route::get('/', [AdminStudentDebtController::class, 'index']);
+            Route::get('/{id}', [AdminStudentDebtController::class, 'show']);
+            Route::post('/{id}/clear', [AdminStudentDebtController::class, 'clearDebt']);
+        });
 
-    // Admin notification routes
-    Route::prefix('notifications')->group(function () {
-        Route::get('/', [AdminNotificationController::class, 'index']);
-        Route::get('/statistics', [AdminNotificationController::class, 'getStats']);
-        Route::get('/unread-count', [AdminNotificationController::class, 'unreadCount']);
-        Route::post('/bulk-send', [AdminNotificationController::class, 'sendBulkNotification']);
-        Route::get('/delivery-logs', [AdminNotificationController::class, 'getDeliveryLogs']);
-        Route::post('/retry-failed', [AdminNotificationController::class, 'retryFailedDeliveries']);
-        Route::get('/user-preferences/{userId}', [AdminNotificationController::class, 'getUserPreferences']);
-        Route::put('/user-preferences/{userId}', [AdminNotificationController::class, 'updateUserPreferences']);
-        Route::get('/preferences-statistics', [AdminNotificationController::class, 'getPreferencesStatistics']);
-        Route::post('/clear-preferences-cache', [AdminNotificationController::class, 'clearPreferencesCache']);
-        Route::get('/templates', [AdminNotificationController::class, 'getNotificationTemplates']);
-    });
+        // Hostel admin assignment routes
+        Route::prefix('hostel-assignments')->group(function () {
+            Route::get('/', [HostelAdminController::class, 'index']);
+            Route::get('/options', [HostelAdminController::class, 'getAssignmentOptions']);
+            Route::post('/', [HostelAdminController::class, 'store']);
+            Route::put('/{id}', [HostelAdminController::class, 'update']);
+            Route::delete('/{id}', [HostelAdminController::class, 'destroy']);
+            Route::get('/staff/{staffId}', [HostelAdminController::class, 'getStaffAssignments']);
+            Route::get('/hostel/{hostelId}', [HostelAdminController::class, 'getHostelStaff']);
+        });
 
-    // Admin bulk operations routes
-    Route::prefix('bulk-operations')->group(function () {
-        Route::get('/exeat-requests', [AdminBulkOperationsController::class, 'getFilteredRequests']);
-        Route::post('/bulk-approve', [AdminBulkOperationsController::class, 'bulkApprove']);
-        Route::post('/bulk-reject', [AdminBulkOperationsController::class, 'bulkReject']);
-        Route::post('/special-dean-override', [AdminBulkOperationsController::class, 'specialDeanOverride']);
-        Route::get('/statistics', [AdminBulkOperationsController::class, 'getStatistics']);
+        // Admin notification routes
+        Route::prefix('notifications')->group(function () {
+            Route::get('/', [AdminNotificationController::class, 'index']);
+            Route::get('/statistics', [AdminNotificationController::class, 'getStats']);
+            Route::get('/unread-count', [AdminNotificationController::class, 'unreadCount']);
+            Route::post('/bulk-send', [AdminNotificationController::class, 'sendBulkNotification']);
+            Route::get('/delivery-logs', [AdminNotificationController::class, 'getDeliveryLogs']);
+            Route::post('/retry-failed', [AdminNotificationController::class, 'retryFailedDeliveries']);
+            Route::get('/user-preferences/{userId}', [AdminNotificationController::class, 'getUserPreferences']);
+            Route::put('/user-preferences/{userId}', [AdminNotificationController::class, 'updateUserPreferences']);
+            Route::get('/preferences-statistics', [AdminNotificationController::class, 'getPreferencesStatistics']);
+            Route::post('/clear-preferences-cache', [AdminNotificationController::class, 'clearPreferencesCache']);
+            Route::get('/templates', [AdminNotificationController::class, 'getNotificationTemplates']);
+        });
+
+        // Admin bulk operations routes
+        Route::prefix('bulk-operations')->group(function () {
+            Route::get('/exeat-requests', [AdminBulkOperationsController::class, 'getFilteredRequests']);
+            Route::post('/bulk-approve', [AdminBulkOperationsController::class, 'bulkApprove']);
+            Route::post('/bulk-reject', [AdminBulkOperationsController::class, 'bulkReject']);
+            Route::post('/special-dean-override', [AdminBulkOperationsController::class, 'specialDeanOverride']);
+            Route::get('/statistics', [AdminBulkOperationsController::class, 'getStatistics']);
+        });
     });
-});
 
     // Dean routes
     Route::middleware('role:dean')->group(function () {
         Route::get('/dean/dashboard', [StaffExeatRequestController::class, 'deanDashboard']);
         Route::get('/dean/exeat-requests', [StaffExeatRequestController::class, 'deanRequests']);
         Route::post('/dean/exeat-requests', [DeanController::class, 'storeForStudent']);
-            Route::post('/dean/exeat-requests/bulkAprroval', [DeanController::class, 'bulkAprroval']);
+        Route::post('/dean/exeat-requests/bulkAprroval', [DeanController::class, 'bulkAprroval']);
         Route::put('/dean/exeat-requests/{id}', [DeanController::class, 'edit']);
-        
+
         // Dean student debt routes
         Route::prefix('dean/student-debts')->group(function () {
             Route::get('/', [DeanController::class, 'studentDebts']);
@@ -429,7 +435,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
         // Common dashboard widgets (accessible by all authenticated users)
         Route::get('/widgets', [DashboardController::class, 'getWidgets']);
-        
+
         // Paginated audit trail routes
         Route::get('/audit-trail', [DashboardController::class, 'getPaginatedAuditTrail']);
         Route::get('/dean-audit-trail', [DashboardController::class, 'getPaginatedDeanAuditTrail'])

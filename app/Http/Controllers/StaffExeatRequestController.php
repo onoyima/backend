@@ -176,7 +176,7 @@ class StaffExeatRequestController extends Controller
                 return response()->json(['message' => 'No access to exeat requests.'], 403);
             }
 
-            $perPage = (int) ($request->input('per_page', 50));
+            $perPage = (int) ($request->input('per_page', 20));
             $page = (int) ($request->input('page', 1));
             $search = trim((string) $request->input('search', ''));
             $categoryId = $request->input('category_id');
@@ -284,7 +284,7 @@ class StaffExeatRequestController extends Controller
                 'pagination' => [
                     'current_page' => 1,
                     'last_page' => 1,
-                    'per_page' => (int) ($request->input('per_page', 50)),
+                    'per_page' => (int) ($request->input('per_page', 20)),
                     'total' => 0,
                     'from' => null,
                     'to' => null
@@ -1738,5 +1738,193 @@ class StaffExeatRequestController extends Controller
         }
 
         return $daysPassed;
+    }
+    /**
+     * Fast-Track: Search for actionable exeat requests (leaving or returning)
+     */
+    public function searchActionable(Request $request)
+    {
+        $search = $request->input('search');
+        $type = $request->input('type'); // 'sign_out' or 'sign_in'
+
+        if (empty($search) || empty($type)) {
+            return response()->json(['exeat_requests' => []]);
+        }
+
+        // Strict Status Mapping based on user mode
+        $allowedStatuses = [];
+        if ($type === 'sign_out') {
+            // Mode: Sign Out -> Only show students ready to leave
+            $allowedStatuses = ['security_signout'];
+        } elseif ($type === 'sign_in') {
+            // Mode: Sign In -> Only show students ready to return
+            $allowedStatuses = ['security_signin'];
+        } else {
+            return response()->json(['exeat_requests' => []]);
+        }
+
+        $targetStatus = ($type === 'sign_out') ? 'security_signout' : 'security_signin';
+
+        // Define Search Logic Closure for reuse
+        $searchLogic = function ($q) use ($search) {
+            $q->whereHas('student', function ($sq) use ($search) {
+                $sq->where('fname', 'like', "%{$search}%")
+                    ->orWhere('lname', 'like', "%{$search}%")
+                    ->orWhere('mname', 'like', "%{$search}%")
+                    ->orWhere('matric_no', 'like', "%{$search}%");
+            })
+                ->orWhere('matric_no', 'like', "%{$search}%");
+
+            if (is_numeric($search)) {
+                $q->orWhere('id', $search);
+            }
+        };
+
+        // 1. Try Strict Search
+        $results = ExeatRequest::with(['student:id,fname,lname,mname,passport,matric_no', 'category:id,name'])
+            ->where('status', 'like', "%{$targetStatus}%")
+            ->where($searchLogic)
+            ->orderBy('updated_at', 'desc')
+            ->take(50)
+            ->get();
+
+        // 2. Fallback: Broad Search (Debug) if no results found
+        if ($results->isEmpty()) {
+            $results = ExeatRequest::with(['student:id,fname,lname,mname,passport,matric_no', 'category:id,name'])
+                ->where($searchLogic)
+                ->orderBy('updated_at', 'desc')
+                ->take(10)
+                ->get();
+
+            if ($results->isNotEmpty()) {
+                $results->transform(function ($item) {
+                    if ($item->student) {
+                        $item->student->matric_no = $item->student->matric_no . " [STATUS: " . $item->status . "]";
+                    }
+                    return $item;
+                });
+            }
+        }
+
+        // Label action type strictly based on the REQUESTED mode
+        $results->transform(function ($item) use ($type) {
+            $item->action_type = $type;
+            return $item;
+        });
+
+        return response()->json(['exeat_requests' => $results]);
+    }
+
+    /**
+     * Fast-Track: Get paginated list of actionable requests
+     */
+    public function getActionableList(Request $request)
+    {
+        $type = $request->input('type'); // 'sign_out' or 'sign_in'
+        $date = $request->input('date'); // Optional date filter
+
+        if (empty($type)) {
+            return response()->json(['data' => []]);
+        }
+
+        // Strict Status Mapping
+        $allowedStatuses = ($type === 'sign_out') ? ['security_signout'] : ['security_signin'];
+
+        $query = ExeatRequest::with(['student:id,fname,lname,passport,matric_no', 'category:id,name'])
+            ->whereIn('status', $allowedStatuses);
+
+        if ($date) {
+            // Filter by relevant date: Departure Date for Leaving, Return Date for Returning
+            $dateField = ($type === 'sign_out') ? 'departure_date' : 'return_date';
+            $query->whereDate($dateField, $date);
+        }
+
+        // Default sort: Most recently updated (likely just approved) first
+        $results = $query->orderBy('updated_at', 'desc')
+            ->paginate(10);
+
+        $results->getCollection()->transform(function ($item) use ($type) {
+            $item->action_type = $type;
+            return $item;
+        });
+
+        return response()->json($results);
+    }
+
+    /**
+     * Fast-Track: Execute bulk actions (Sign In / Sign Out)
+     */
+    public function executeActionable(Request $request)
+    {
+        $request->validate([
+            'request_ids' => 'required|array',
+            'request_ids.*' => 'integer|exists:exeat_requests,id'
+        ]);
+
+        $ids = $request->input('request_ids');
+        $user = $request->user();
+        $processed = [];
+        $failed = [];
+
+        foreach ($ids as $id) {
+            try {
+                $exeatRequest = ExeatRequest::find($id);
+                if (!$exeatRequest)
+                    continue;
+
+                $action = null;
+                $approval = null;
+
+                DB::beginTransaction();
+
+                if ($exeatRequest->status === 'security_signout') {
+                    // Perform Sign Out
+                    $action = 'sign_out';
+                    $approval = ExeatApproval::create([
+                        'exeat_request_id' => $exeatRequest->id,
+                        'staff_id' => $user->id,
+                        'role' => 'security',
+                        'status' => 'approved',
+                        'method' => 'security_signout',
+                        'comment' => 'Fast-track sign out'
+                    ]);
+                    $this->workflowService->approve($exeatRequest, $approval, 'Fast-track sign out');
+
+                } elseif ($exeatRequest->status === 'security_signin') {
+                    // Perform Sign In
+                    $action = 'sign_in';
+                    $approval = ExeatApproval::create([
+                        'exeat_request_id' => $exeatRequest->id,
+                        'staff_id' => $user->id,
+                        'role' => 'security',
+                        'status' => 'approved',
+                        'method' => 'security_signin',
+                        'comment' => 'Fast-track sign in'
+                    ]);
+                    $this->workflowService->approve($exeatRequest, $approval, 'Fast-track sign in');
+                }
+
+                DB::commit();
+
+                if ($action) {
+                    $processed[] = [
+                        'id' => $id,
+                        'action' => $action,
+                        'student' => $exeatRequest->student->fname . ' ' . $exeatRequest->student->lname
+                    ];
+                }
+
+            } catch (\Exception $e) {
+                DB::rollBack();
+                $failed[] = ['id' => $id, 'error' => $e->getMessage()];
+                Log::error('Fast-track execution failed', ['id' => $id, 'error' => $e->getMessage()]);
+            }
+        }
+
+        return response()->json([
+            'message' => 'Bulk processing completed',
+            'processed' => $processed,
+            'failed' => $failed
+        ]);
     }
 }
