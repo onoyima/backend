@@ -176,6 +176,11 @@ class StaffExeatRequestController extends Controller
                 return response()->json(['message' => 'No access to exeat requests.'], 403);
             }
 
+            $perPage = (int) ($request->input('per_page', 50));
+            $page = (int) ($request->input('page', 1));
+            $search = trim((string) $request->input('search', ''));
+            $categoryId = $request->input('category_id');
+
             // Optional filter: search by student_id – if provided, ignore status restrictions
             if ($request->has('student_id')) {
                 $query = ExeatRequest::query()
@@ -207,12 +212,40 @@ class StaffExeatRequestController extends Controller
                 }
             }
 
-            // Fetch all records without pagination
-            $exeatRequests = $query->orderBy('departure_date', 'asc')->get();
+            // Category filter
+            if ($categoryId !== null && $categoryId !== '') {
+                $query->where('category_id', (int) $categoryId);
+            }
+
+            // Global search across key fields and student names
+            if ($search !== '') {
+                $query->where(function($q) use ($search) {
+                    $q->where('matric_no', 'like', "%{$search}%")
+                      ->orWhere('destination', 'like', "%{$search}%")
+                      ->orWhere('reason', 'like', "%{$search}%")
+                      ->orWhere('parent_surname', 'like', "%{$search}%")
+                      ->orWhere('parent_othernames', 'like', "%{$search}%")
+                      ->orWhereHas('student', function($sq) use ($search) {
+                          $sq->where('fname', 'like', "%{$search}%")
+                             ->orWhere('lname', 'like', "%{$search}%");
+                      });
+                });
+            }
+
+            // Pagination and sorting (default: departure_date asc)
+            $total = (clone $query)->count();
+            $items = $query->orderBy('departure_date', 'asc')->forPage($page, $perPage)->get();
 
             return response()->json([
-                'exeat_requests' => $exeatRequests,
-                'pagination' => null
+                'exeat_requests' => $items,
+                'pagination' => [
+                    'current_page' => $page,
+                    'last_page' => (int) ceil(max($total, 1) / max($perPage, 1)),
+                    'per_page' => $perPage,
+                    'total' => $total,
+                    'from' => ($total === 0) ? null : (($page - 1) * $perPage + 1),
+                    'to' => ($total === 0) ? null : min($page * $perPage, $total)
+                ]
             ]);
         } catch (\Throwable $e) {
             \Log::error('StaffExeatRequestController@index failed', [
@@ -222,7 +255,14 @@ class StaffExeatRequestController extends Controller
             ]);
             return response()->json([
                 'exeat_requests' => [],
-                'pagination' => null,
+                'pagination' => [
+                    'current_page' => 1,
+                    'last_page' => 1,
+                    'per_page' => (int) ($request->input('per_page', 50)),
+                    'total' => 0,
+                    'from' => null,
+                    'to' => null
+                ],
                 'message' => 'Server Error'
             ], 200);
         }
@@ -1647,7 +1687,7 @@ class StaffExeatRequestController extends Controller
 
     /**
      * Calculate days overdue using exact 24-hour periods at 11:59 PM
-     * 
+     *
      * @param \Carbon\Carbon $returnDate
      * @param \Carbon\Carbon $actualReturnTime
      * @return int

@@ -24,15 +24,14 @@ class CustomCorsMiddleware
 
         // Get the origin from the request
         $origin = $request->header('Origin');
-        
+
         // Define allowed origins
         $allowedOrigins = [
-            'https://exeat.vercel.app',
-            // 'https://exeat.veritas.edu.ng',
-            // 'https://attendance.veritas.edu.ng',
-            'https://testexeat.veritas.edu.ng',
+            // 'https://exeat.vercel.app',
+            'https://exeat.veritas.edu.ng',
+            'https://attendance.veritas.edu.ng',
+            // 'https://testexeat.veritas.edu.ng',
             'http://localhost:3000',
-            'http://localhost:3001',
         ];
 
         // Check if origin is allowed or matches patterns
@@ -50,7 +49,7 @@ class CustomCorsMiddleware
         if ($isAllowed) {
             $response->headers->set('Access-Control-Allow-Origin', $origin);
         }
-        
+
         $response->headers->set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
         $response->headers->set('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, X-CSRF-TOKEN, X-XSRF-TOKEN');
         $response->headers->set('Access-Control-Allow-Credentials', 'true');

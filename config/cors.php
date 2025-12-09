@@ -8,10 +8,10 @@ return [
 
     'allowed_origins' => [
         'http://localhost:3000',
-        'https://exeat.vercel.app',
-        // 'https://exeat.veritas.edu.ng',
-        // 'https://attendance.veritas.edu.ng',
-        'https://testexeat.veritas.edu.ng',
+        // 'https://exeat.vercel.app',
+        'https://exeat.veritas.edu.ng',
+        'https://attendance.veritas.edu.ng',
+        // 'https://testexeat.veritas.edu.ng',
     ],
 
     'allowed_origins_patterns' => [
