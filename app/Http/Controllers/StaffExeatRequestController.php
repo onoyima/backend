@@ -1772,6 +1772,10 @@ class StaffExeatRequestController extends Controller
                     ->orWhere('lname', 'like', "%{$search}%")
                     ->orWhere('mname', 'like', "%{$search}%")
                     ->orWhere('matric_no', 'like', "%{$search}%");
+
+                if (is_numeric($search)) {
+                    $sq->orWhere('id', $search);
+                }
             })
                 ->orWhere('matric_no', 'like', "%{$search}%");
 
