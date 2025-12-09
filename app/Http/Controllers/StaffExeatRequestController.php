@@ -180,12 +180,17 @@ class StaffExeatRequestController extends Controller
             $page = (int) ($request->input('page', 1));
             $search = trim((string) $request->input('search', ''));
             $categoryId = $request->input('category_id');
+            $statusFilter = $request->input('status');
 
             // Optional filter: search by student_id – if provided, ignore status restrictions
             if ($request->has('student_id')) {
                 $query = ExeatRequest::query()
                     ->with('student:id,fname,lname,passport,phone')
                     ->where('student_id', $request->input('student_id'));
+            } elseif ($search !== '') {
+                // If searching, ignore status restrictions (Global Search Mode) to show full history
+                $query = ExeatRequest::query()
+                    ->with('student:id,fname,lname,passport,phone');
             } else {
                 $query = ExeatRequest::query()
                     ->with('student:id,fname,lname,passport,phone')
@@ -195,11 +200,12 @@ class StaffExeatRequestController extends Controller
             // Apply hostel-based filtering for hostel admins
             $query = $this->applyHostelFiltering($query, $user, $roleNames);
 
-            if ($request->has('status')) {
+            if ($request->has('status') && $statusFilter !== 'all') { // Only apply if explicitly filtered
                 $query->where('status', $request->input('status'));
             }
 
             if ($request->has('filter')) {
+                // ... (existing filter checks) ...
                 $filter = $request->input('filter');
                 if ($filter === 'overdue') {
                     $query->where('return_date', '<', now()->toDateString())
@@ -217,34 +223,54 @@ class StaffExeatRequestController extends Controller
                 $query->where('category_id', (int) $categoryId);
             }
 
-            // Global search across key fields and student names
+            // Global search logic (applied to the query object we initialized above)
             if ($search !== '') {
-                $query->where(function($q) use ($search) {
+                $query->where(function ($q) use ($search) {
                     $q->where('matric_no', 'like', "%{$search}%")
-                      ->orWhere('destination', 'like', "%{$search}%")
-                      ->orWhere('reason', 'like', "%{$search}%")
-                      ->orWhere('parent_surname', 'like', "%{$search}%")
-                      ->orWhere('parent_othernames', 'like', "%{$search}%")
-                      ->orWhereHas('student', function($sq) use ($search) {
-                          $sq->where('fname', 'like', "%{$search}%")
-                             ->orWhere('lname', 'like', "%{$search}%");
-                      });
+                        ->orWhere('destination', 'like', "%{$search}%")
+                        ->orWhere('reason', 'like', "%{$search}%")
+                        ->orWhere('parent_surname', 'like', "%{$search}%")
+                        ->orWhere('parent_othernames', 'like', "%{$search}%")
+                        ->orWhereHas('student', function ($sq) use ($search) {
+                            $sq->where('fname', 'like', "%{$search}%")
+                                ->orWhere('lname', 'like', "%{$search}%");
+                        });
                 });
             }
 
-            // Pagination and sorting (default: departure_date asc)
-            $total = (clone $query)->count();
-            $items = $query->orderBy('departure_date', 'asc')->forPage($page, $perPage)->get();
+            // Pagination and sorting
+            if ($search !== '' || $request->has('student_id')) {
+                // If searching or viewing student history, prioritize latest Created At (newest requests first)
+                $query->orderBy('created_at', 'desc')->orderBy('id', 'desc');
+            } else {
+                // Default inbox view: sort by departure date (soonest departures first)
+                $query->orderBy('departure_date', 'asc')->orderBy('id', 'asc');
+            }
+
+            // Ensure perPage is valid
+            if ($perPage <= 0)
+                $perPage = 20;
+
+            // Fetch records with pagination to prevent memory exhaustion
+            $exeatRequests = $query->paginate($perPage);
+
+            // Transform status for display if expired
+            $exeatRequests->getCollection()->transform(function ($item) {
+                if ($item->is_expired) {
+                    $item->status = 'expired';
+                }
+                return $item;
+            });
 
             return response()->json([
-                'exeat_requests' => $items,
+                'exeat_requests' => $exeatRequests->items(),
                 'pagination' => [
-                    'current_page' => $page,
-                    'last_page' => (int) ceil(max($total, 1) / max($perPage, 1)),
-                    'per_page' => $perPage,
-                    'total' => $total,
-                    'from' => ($total === 0) ? null : (($page - 1) * $perPage + 1),
-                    'to' => ($total === 0) ? null : min($page * $perPage, $total)
+                    'current_page' => $exeatRequests->currentPage(),
+                    'last_page' => $exeatRequests->lastPage(),
+                    'per_page' => $exeatRequests->perPage(),
+                    'total' => $exeatRequests->total(),
+                    'from' => $exeatRequests->firstItem(),
+                    'to' => $exeatRequests->lastItem(),
                 ]
             ]);
         } catch (\Throwable $e) {
@@ -388,10 +414,10 @@ class StaffExeatRequestController extends Controller
             }
 
             if ($search !== '') {
-                $query->where(function($q) use ($search) {
+                $query->where(function ($q) use ($search) {
                     $q->where('exeat_requests.matric_no', 'like', "%{$search}%")
-                      ->orWhere('students.fname', 'like', "%{$search}%")
-                      ->orWhere('students.lname', 'like', "%{$search}%");
+                        ->orWhere('students.fname', 'like', "%{$search}%")
+                        ->orWhere('students.lname', 'like', "%{$search}%");
                 });
             }
 
@@ -399,7 +425,7 @@ class StaffExeatRequestController extends Controller
                 $query->whereNotNull('security_signouts.signin_time');
             } elseif ($checked === 'out') {
                 $query->whereNotNull('security_signouts.signout_time')
-                      ->whereNull('security_signouts.signin_time');
+                    ->whereNull('security_signouts.signin_time');
             }
 
             // Sorting
@@ -494,33 +520,33 @@ class StaffExeatRequestController extends Controller
                     $hostelNames = $assignedHostels->pluck('hostel.name')->toArray();
                     $query->whereIn('exeat_requests.student_accommodation', $hostelNames);
                     if ($search !== '') {
-                        $query->where(function($q) use ($search) {
+                        $query->where(function ($q) use ($search) {
                             $q->where('exeat_requests.matric_no', 'like', "%{$search}%")
-                              ->orWhere('students.fname', 'like', "%{$search}%")
-                              ->orWhere('students.lname', 'like', "%{$search}%");
+                                ->orWhere('students.fname', 'like', "%{$search}%")
+                                ->orWhere('students.lname', 'like', "%{$search}%");
                         });
                     }
                     if ($checked === 'in') {
                         $query->whereNotNull('security_signouts.signin_time');
                     } elseif ($checked === 'out') {
                         $query->whereNotNull('security_signouts.signout_time')
-                              ->whereNull('security_signouts.signin_time');
+                            ->whereNull('security_signouts.signin_time');
                     }
                     $rows = $query->orderBy('security_signouts.signout_time', 'desc')->get();
                 }
             } else {
                 if ($search !== '') {
-                    $query->where(function($q) use ($search) {
+                    $query->where(function ($q) use ($search) {
                         $q->where('exeat_requests.matric_no', 'like', "%{$search}%")
-                          ->orWhere('students.fname', 'like', "%{$search}%")
-                          ->orWhere('students.lname', 'like', "%{$search}%");
+                            ->orWhere('students.fname', 'like', "%{$search}%")
+                            ->orWhere('students.lname', 'like', "%{$search}%");
                     });
                 }
                 if ($checked === 'in') {
                     $query->whereNotNull('security_signouts.signin_time');
                 } elseif ($checked === 'out') {
                     $query->whereNotNull('security_signouts.signout_time')
-                          ->whereNull('security_signouts.signin_time');
+                        ->whereNull('security_signouts.signin_time');
                 }
                 $rows = $query->orderBy('security_signouts.signout_time', 'desc')->get();
             }
@@ -532,14 +558,14 @@ class StaffExeatRequestController extends Controller
                 foreach ($rows as $r) {
                     $name = trim(($r->fname ?? '') . ' ' . ($r->lname ?? ''));
                     $html .= '<tr>'
-                        . '<td>'.htmlspecialchars($r->matric_no ?? '').'</td>'
-                        . '<td>'.htmlspecialchars($name).'</td>'
-                        . '<td>'.htmlspecialchars($r->hostel ?? '').'</td>'
-                        . '<td>'.htmlspecialchars($r->signout_time ?? '').'</td>'
-                        . '<td>'.htmlspecialchars($r->signin_time ?? '').'</td>'
-                        . '<td>'.htmlspecialchars($r->departure_date ?? '').'</td>'
-                        . '<td>'.htmlspecialchars($r->return_date ?? '').'</td>'
-                        . '<td>'.htmlspecialchars($r->signin_time ?? '').'</td>'
+                        . '<td>' . htmlspecialchars($r->matric_no ?? '') . '</td>'
+                        . '<td>' . htmlspecialchars($name) . '</td>'
+                        . '<td>' . htmlspecialchars($r->hostel ?? '') . '</td>'
+                        . '<td>' . htmlspecialchars($r->signout_time ?? '') . '</td>'
+                        . '<td>' . htmlspecialchars($r->signin_time ?? '') . '</td>'
+                        . '<td>' . htmlspecialchars($r->departure_date ?? '') . '</td>'
+                        . '<td>' . htmlspecialchars($r->return_date ?? '') . '</td>'
+                        . '<td>' . htmlspecialchars($r->signin_time ?? '') . '</td>'
                         . '</tr>';
                 }
                 $html .= '</tbody></table>';
@@ -556,14 +582,14 @@ class StaffExeatRequestController extends Controller
                 foreach ($rows as $r) {
                     $name = trim(($r->fname ?? '') . ' ' . ($r->lname ?? ''));
                     $html .= '<tr>'
-                        . '<td>'.htmlspecialchars($r->matric_no ?? '').'</td>'
-                        . '<td>'.htmlspecialchars($name).'</td>'
-                        . '<td>'.htmlspecialchars($r->hostel ?? '').'</td>'
-                        . '<td>'.htmlspecialchars($r->signout_time ?? '').'</td>'
-                        . '<td>'.htmlspecialchars($r->signin_time ?? '').'</td>'
-                        . '<td>'.htmlspecialchars($r->departure_date ?? '').'</td>'
-                        . '<td>'.htmlspecialchars($r->return_date ?? '').'</td>'
-                        . '<td>'.htmlspecialchars($r->signin_time ?? '').'</td>'
+                        . '<td>' . htmlspecialchars($r->matric_no ?? '') . '</td>'
+                        . '<td>' . htmlspecialchars($name) . '</td>'
+                        . '<td>' . htmlspecialchars($r->hostel ?? '') . '</td>'
+                        . '<td>' . htmlspecialchars($r->signout_time ?? '') . '</td>'
+                        . '<td>' . htmlspecialchars($r->signin_time ?? '') . '</td>'
+                        . '<td>' . htmlspecialchars($r->departure_date ?? '') . '</td>'
+                        . '<td>' . htmlspecialchars($r->return_date ?? '') . '</td>'
+                        . '<td>' . htmlspecialchars($r->signin_time ?? '') . '</td>'
                         . '</tr>';
                 }
                 $html .= '</tbody></table></body></html>';

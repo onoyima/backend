@@ -101,6 +101,7 @@ class StudentExeatRequestController extends Controller
         }
         // Prevent new request if previous is not completed
         $existing = ExeatRequest::where('student_id', $user->id)
+            ->where('is_expired', false) // Allow new request if previous is expired
             ->whereNotIn('status', ['completed', 'rejected']) // Optional: allow new request after rejection
             ->first();
 
@@ -210,6 +211,14 @@ class StudentExeatRequestController extends Controller
             ->with(['category:id,name', 'student:id,fname,lname,passport,phone'])
             ->orderBy('created_at', 'desc')
             ->get();
+
+        $exeats->transform(function ($item) {
+            if ($item->is_expired) {
+                $item->status = 'expired';
+            }
+            return $item;
+        });
+
         return response()->json(['exeat_requests' => $exeats]);
     }
 

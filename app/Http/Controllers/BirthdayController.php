@@ -108,8 +108,9 @@ class BirthdayController extends Controller
             'date' => Carbon::now()->toDayDateTimeString(),
             'recipients' => $recipients
         ], function ($message) {
-            $message->to(env('ADMIN_EMAIL'), 'Birthday Admin')
-                    ->subject('Daily Birthday Email Summary');
+            // FIXED: Use config instead of env() to support config caching in production
+            $message->to(config('mail.from.address'), 'Birthday Admin')
+                ->subject('Daily Birthday Email Summary');
         });
     }
 
@@ -129,99 +130,99 @@ class BirthdayController extends Controller
     }
 
     public function sendBirthdayEmailToSpecificUsers()
-{
-    $studentsSent = 0;
-    $staffSent = 0;
-    $recipients = [];
+    {
+        $studentsSent = 0;
+        $staffSent = 0;
+        $recipients = [];
 
-    // --- Specific Student ---
-    $student = Student::with('academics')->find(1336);
-    if (
-        $student &&
-        $student->status == 1
-        ) 
-        {
-        $email = $student->username;
-        $recipientName = $student->fname . ' ' . $student->lname;
+        // --- Specific Student ---
+        $student = Student::with('academics')->find(1336);
+        if (
+            $student &&
+            $student->status == 1
+        ) {
+            $email = $student->username;
+            $recipientName = $student->fname . ' ' . $student->lname;
 
-        if (!BirthdayEmailLog::where('email', $email)->whereDate('updated_at', today())->exists()) {
-            $photoBase64 = $student->passport ? 'data:image/jpeg;base64,' . base64_encode($student->passport) : null;
+            if (!BirthdayEmailLog::where('email', $email)->whereDate('updated_at', today())->exists()) {
+                $photoBase64 = $student->passport ? 'data:image/jpeg;base64,' . base64_encode($student->passport) : null;
 
-            $this->sendBirthdayEmail(
-                $recipientName,
-                $email,
-                $student->dob,
-                'Student',
-                'Wishing you success in your studies!',
-                'Your University',
-                $photoBase64
-            );
+                $this->sendBirthdayEmail(
+                    $recipientName,
+                    $email,
+                    $student->dob,
+                    'Student',
+                    'Wishing you success in your studies!',
+                    'Your University',
+                    $photoBase64
+                );
 
-            BirthdayEmailLog::create([
-                'email' => $email,
-                'recipient_name' => $recipientName,
-                'type' => 'student',
-                'updated_at' => now()
-            ]);
+                BirthdayEmailLog::create([
+                    'email' => $email,
+                    'recipient_name' => $recipientName,
+                    'type' => 'student',
+                    'updated_at' => now()
+                ]);
 
-            $recipients[] = [
-                'name' => $recipientName,
-                'email' => $email,
-                'type' => 'student',
-                'passport' => $photoBase64
-            ];
+                $recipients[] = [
+                    'name' => $recipientName,
+                    'email' => $email,
+                    'type' => 'student',
+                    'passport' => $photoBase64
+                ];
 
-            $studentsSent++;
+                $studentsSent++;
+            }
         }
-    }
 
-    // --- Specific Staff ---
-    $staff = Staff::find(596);
-    if ($staff && $staff->status == 1) {
-        $email = $staff->p_email;
-        $recipientName = $staff->fname . ' ' . $staff->lname;
+        // --- Specific Staff ---
+        $staff = Staff::find(596);
+        if ($staff && $staff->status == 1) {
+            $email = $staff->p_email;
+            $recipientName = $staff->fname . ' ' . $staff->lname;
 
-        if (!BirthdayEmailLog::where('email', $email)->whereDate('updated_at', today())->exists()) {
-            $photoBase64 = $staff->passport ? 'data:image/jpeg;base64,' . base64_encode($staff->passport) : null;
+            if (!BirthdayEmailLog::where('email', $email)->whereDate('updated_at', today())->exists()) {
+                $photoBase64 = $staff->passport ? 'data:image/jpeg;base64,' . base64_encode($staff->passport) : null;
 
-            $this->sendBirthdayEmail(
-                $recipientName,
-                $email,
-                $staff->dob,
-                'Staff',
-                'Thank you for your dedication!',
-                'Your University',
-                $photoBase64
-            );
+                $this->sendBirthdayEmail(
+                    $recipientName,
+                    $email,
+                    $staff->dob,
+                    'Staff',
+                    'Thank you for your dedication!',
+                    'Your University',
+                    $photoBase64
+                );
 
-            BirthdayEmailLog::create([
-                'email' => $email,
-                'recipient_name' => $recipientName,
-                'type' => 'staff',
-                'updated_at' => now()
-            ]);
+                BirthdayEmailLog::create([
+                    'email' => $email,
+                    'recipient_name' => $recipientName,
+                    'type' => 'staff',
+                    'updated_at' => now()
+                ]);
 
-            $recipients[] = [
-                'name' => $recipientName,
-                'email' => $email,
-                'type' => 'staff',
-                'passport' => $photoBase64
-            ];
+                $recipients[] = [
+                    'name' => $recipientName,
+                    'email' => $email,
+                    'type' => 'staff',
+                    'passport' => $photoBase64
+                ];
 
-            $staffSent++;
+                $staffSent++;
+            }
         }
-    }
 
-    // --- Send summary to admin ---
-    Mail::send('emails.birthday_summary', [
-        'studentsSent' => $studentsSent,
-        'staffSent' => $staffSent,
-        'date' => Carbon::now()->toDayDateTimeString(),
-        'recipients' => $recipients
-    ], function ($message) {
-        $message->to(env('ADMIN_EMAIL'), 'Birthday Admin')
+        // --- Send summary to admin ---
+        Mail::send('emails.birthday_summary', [
+            'studentsSent' => $studentsSent,
+            'staffSent' => $staffSent,
+            'date' => Carbon::now()->toDayDateTimeString(),
+            'recipients' => $recipients
+        ], function ($message) {
+            // FIXED: Use config instead of env()
+            $message->to(config('mail.from.address'), 'Birthday Admin')
                 ->subject('Direct Birthday Email Summary (Manual Trigger)');
-    });
-}
+        });
+    }
 
 }

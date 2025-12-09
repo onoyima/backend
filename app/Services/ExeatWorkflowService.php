@@ -215,22 +215,22 @@ class ExeatWorkflowService
         $parentConsent = ParentConsent::updateOrCreate(
             ['exeat_request_id' => $exeatRequest->id],
             [
-                'consent_status'    => 'pending',
-                'consent_method'    => $method,
-                'consent_token'     => uniqid('consent_', true),
+                'consent_status' => 'pending',
+                'consent_method' => $method,
+                'consent_token' => uniqid('consent_', true),
                 'consent_timestamp' => null,
-                'expires_at'        => $expiresAt,
+                'expires_at' => $expiresAt,
             ]
         );
 
-        $student      = $exeatRequest->student;
-        $parentEmail  = $exeatRequest->parent_email;
-        $parentPhone  = $exeatRequest->parent_phone_no;
-        $studentName  = $student ? "{$student->fname} {$student->lname}" : '';
-        $reason       = $exeatRequest->reason;
+        $student = $exeatRequest->student;
+        $parentEmail = $exeatRequest->parent_email;
+        $parentPhone = $exeatRequest->parent_phone_no;
+        $studentName = $student ? "{$student->fname} {$student->lname}" : '';
+        $reason = $exeatRequest->reason;
 
-        $linkApprove  = $this->urlShortenerService->shortenUrl(url('/api/parent/consent/' . $parentConsent->consent_token . '/approve'));
-        $linkReject   = $this->urlShortenerService->shortenUrl(url('/api/parent/consent/' . $parentConsent->consent_token . '/decline'));
+        $linkApprove = $this->urlShortenerService->shortenUrl(url('/api/parent/consent/' . $parentConsent->consent_token . '/approve'));
+        $linkReject = $this->urlShortenerService->shortenUrl(url('/api/parent/consent/' . $parentConsent->consent_token . '/decline'));
 
         $expiryText = $expiresAt->format('F j, Y g:i A');
 
@@ -273,7 +273,7 @@ class ExeatWorkflowService
         }
 
         // Send copy to admin if admin email is configured
-        $adminEmail = env('ADMIN_EMAIL');
+        $adminEmail = config('mail.from.address');
         if (!empty($adminEmail)) {
             try {
                 $this->sendParentConsentEmail($adminEmail, 'Administrator', 'Exeat Consent Request', $notificationEmail, $exeatRequest, $linkApprove, $linkReject);

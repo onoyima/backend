@@ -89,7 +89,7 @@ class ExeatRequest extends Model
     {
         return $this->belongsTo(ExeatCategory::class);
     }
-    
+
     /**
      * Get the debts associated with this exeat request.
      */
@@ -108,7 +108,7 @@ class ExeatRequest extends Model
     public function checkWeekdaysAndNotify(): void
     {
         $weekdaysCovered = $this->getWeekdaysCovered();
-        
+
         if (!empty($weekdaysCovered)) {
             $this->sendWeekdayNotification($weekdaysCovered);
         }
@@ -120,9 +120,9 @@ class ExeatRequest extends Model
         $departureDate = \Carbon\Carbon::parse($this->departure_date);
         $returnDate = \Carbon\Carbon::parse($this->return_date);
         $weekdays = [];
-        
+
         $currentDate = $departureDate->copy();
-        
+
         while ($currentDate->lte($returnDate)) {
             // Check if current date is a weekday (Monday = 1, Friday = 5)
             if ($currentDate->dayOfWeek >= 1 && $currentDate->dayOfWeek <= 5) {
@@ -130,7 +130,7 @@ class ExeatRequest extends Model
             }
             $currentDate->addDay();
         }
-        
+
         return $weekdays;
     }
 
@@ -140,7 +140,7 @@ class ExeatRequest extends Model
         try {
             $student = $this->student;
             $weekdaysList = implode(', ', $weekdays);
-            
+
             $message = "Student Weekday Absence Notification\n\n";
             $message .= "Student Name: {$student->fname} {$student->lname}\n";
             $message .= "Matric Number: {$this->matric_no}\n";
@@ -151,10 +151,10 @@ class ExeatRequest extends Model
             $message .= "Weekdays Covered: {$weekdaysList}\n\n";
             $message .= "This student has applied to be absent during weekdays.\n\n";
             $message .= "— VERITAS University Exeat Management System";
-            
-            $recipientEmail = env('ACADEMIC_ADMIN_EMAIL');
+
+            $recipientEmail = config('mail.from.address');
             if (!is_string($recipientEmail) || trim($recipientEmail) === '' || !filter_var($recipientEmail, FILTER_VALIDATE_EMAIL)) {
-                $recipientEmail = env('ADMIN_EMAIL');
+                $recipientEmail = config('mail.from.address');
             }
             if (!is_string($recipientEmail) || trim($recipientEmail) === '' || !filter_var($recipientEmail, FILTER_VALIDATE_EMAIL)) {
                 \Log::warning('Skipped weekday absence email due to invalid admin email', [
@@ -164,17 +164,17 @@ class ExeatRequest extends Model
             } else {
                 \Mail::raw($message, function ($mail) use ($student, $recipientEmail) {
                     $mail->to($recipientEmail, 'Academic Administrator')
-                         ->subject("Weekday Absence Alert - {$student->fname} {$student->lname} ({$this->matric_no})");
+                        ->subject("Weekday Absence Alert - {$student->fname} {$student->lname} ({$this->matric_no})");
                 });
             }
-            
+
             \Log::info('Weekday absence notification sent', [
                 'exeat_request_id' => $this->id,
                 'student_id' => $this->student_id,
                 'matric_no' => $this->matric_no,
                 'weekdays_count' => count($weekdays)
             ]);
-            
+
         } catch (\Exception $e) {
             \Log::error('Failed to send weekday absence notification', [
                 'exeat_request_id' => $this->id,
@@ -205,8 +205,8 @@ class ExeatRequest extends Model
     public function scopeOverdue($query)
     {
         return $query->where('return_date', '<', now()->toDateString())
-                    ->where('is_expired', false)
-                    ->whereNotIn('status', ['security_signin', 'hostel_signin', 'completed', 'rejected']);
+            ->where('is_expired', false)
+            ->whereNotIn('status', ['security_signin', 'hostel_signin', 'completed', 'rejected']);
     }
 
     /**
@@ -214,9 +214,9 @@ class ExeatRequest extends Model
      */
     public function isOverdue()
     {
-        return $this->return_date < now()->toDateString() 
-               && !$this->is_expired 
-               && !in_array($this->status, ['security_signin', 'hostel_signin', 'completed', 'rejected']);
+        return $this->return_date < now()->toDateString()
+            && !$this->is_expired
+            && !in_array($this->status, ['security_signin', 'hostel_signin', 'completed', 'rejected']);
     }
 
     /**

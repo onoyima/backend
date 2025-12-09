@@ -52,9 +52,9 @@ class StaffNotificationController extends Controller
 
         $staff = Auth::user();
         $perPage = $request->get('per_page', 15);
-        
+
         $filters = $request->only(['type', 'priority', 'read_status', 'exeat_id', 'student_id']);
-        
+
         $notifications = $this->notificationService->getUserNotifications(
             ExeatNotification::RECIPIENT_STAFF,
             $staff->id,
@@ -82,7 +82,7 @@ class StaffNotificationController extends Controller
     public function unreadCount(): JsonResponse
     {
         $staff = Auth::user();
-        
+
         $count = $this->notificationService->getUnreadCount(
             ExeatNotification::RECIPIENT_STAFF,
             $staff->id
@@ -109,7 +109,7 @@ class StaffNotificationController extends Controller
 
         $staff = Auth::user();
         $notificationIds = $request->get('mark_all', false) ? null : $request->get('notification_ids');
-        
+
         $markedCount = $this->notificationService->markNotificationsAsRead(
             ExeatNotification::RECIPIENT_STAFF,
             $staff->id,
@@ -131,7 +131,7 @@ class StaffNotificationController extends Controller
     public function getPreferences(): JsonResponse
     {
         $staff = Auth::user();
-        
+
         $summary = $this->preferenceService->getNotificationSummary(
             'staff',
             $staff->id
@@ -158,11 +158,11 @@ class StaffNotificationController extends Controller
 
         $staff = Auth::user();
         $updates = [];
-        
+
         if ($request->has('notification_type')) {
             $updates['notification_type'] = $request->notification_type;
         }
-        
+
         if ($request->has('delivery_methods')) {
             $methods = $request->delivery_methods;
             $updates['in_app_enabled'] = in_array('in_app', $methods);
@@ -170,15 +170,15 @@ class StaffNotificationController extends Controller
             $updates['sms_enabled'] = in_array('sms', $methods);
             $updates['whatsapp_enabled'] = in_array('whatsapp', $methods);
         }
-        
+
         if ($request->has('quiet_hours_start')) {
             $updates['quiet_hours_start'] = $request->quiet_hours_start;
         }
-        
+
         if ($request->has('quiet_hours_end')) {
             $updates['quiet_hours_end'] = $request->quiet_hours_end;
         }
-        
+
         $preference = $this->preferenceService->updateUserPreferences(
             'staff',
             $staff->id,
@@ -198,12 +198,12 @@ class StaffNotificationController extends Controller
     public function getPendingApprovals(): JsonResponse
     {
         $staff = Auth::user();
-        
+
         // Get staff roles to determine what approvals they can handle
         $staffRoles = $staff->exeatRoles->pluck('role')->toArray();
-        
+
         $pendingApprovals = [];
-        
+
         foreach ($staffRoles as $role) {
             $status = match ($role) {
                 'cmd' => 'cmd_review',
@@ -213,18 +213,21 @@ class StaffNotificationController extends Controller
                 'security' => 'security_signout',
                 default => null
             };
-            
+
             if ($status) {
                 $requests = ExeatRequest::where('status', $status)
-                    ->with(['student', 'notifications' => function ($query) use ($staff) {
-                        $query->where('recipient_type', ExeatNotification::RECIPIENT_STAFF)
-                            ->where('recipient_id', $staff->id)
-                            ->where('notification_type', ExeatNotification::TYPE_APPROVAL_REQUIRED)
-                            ->where('is_read', false);
-                    }])
+                    ->with([
+                        'student',
+                        'notifications' => function ($query) use ($staff) {
+                            $query->where('recipient_type', ExeatNotification::RECIPIENT_STAFF)
+                                ->where('recipient_id', $staff->id)
+                                ->where('notification_type', ExeatNotification::TYPE_APPROVAL_REQUIRED)
+                                ->where('is_read', false);
+                        }
+                    ])
                     ->orderBy('created_at', 'asc')
                     ->get();
-                
+
                 $pendingApprovals[$role] = $requests;
             }
         }
@@ -256,7 +259,7 @@ class StaffNotificationController extends Controller
         ]);
 
         $staff = Auth::user();
-        
+
         // Check if staff has permission to send notifications
         if (!$staff->hasPermission('send_notifications')) {
             return response()->json([
@@ -264,17 +267,17 @@ class StaffNotificationController extends Controller
                 'message' => 'You do not have permission to send notifications'
             ], 403);
         }
-        
+
         $recipients = collect($request->student_ids)->map(function ($studentId) {
             return [
                 'type' => ExeatNotification::RECIPIENT_STUDENT,
                 'id' => $studentId
             ];
         })->toArray();
-        
+
         // Create a dummy exeat request for custom notifications
         $dummyExeat = new ExeatRequest(['id' => 0]);
-        
+
         $notifications = $this->notificationService->createNotification(
             $dummyExeat,
             $recipients,
@@ -305,18 +308,18 @@ class StaffNotificationController extends Controller
         ]);
 
         $staff = Auth::user();
-        
+
         $query = ExeatNotification::where('recipient_type', ExeatNotification::RECIPIENT_STAFF)
             ->where('recipient_id', $staff->id);
-        
+
         if ($request->has('date_from')) {
             $query->where('created_at', '>=', $request->date_from);
         }
-        
+
         if ($request->has('date_to')) {
             $query->where('created_at', '<=', $request->date_to);
         }
-        
+
         $stats = $query->selectRaw('
             notification_type,
             priority,
@@ -324,14 +327,14 @@ class StaffNotificationController extends Controller
             SUM(CASE WHEN is_read = 1 THEN 1 ELSE 0 END) as read_count,
             SUM(CASE WHEN is_read = 0 THEN 1 ELSE 0 END) as unread_count
         ')
-        ->groupBy('notification_type', 'priority')
-        ->get()
-        ->groupBy('notification_type');
-        
+            ->groupBy('notification_type', 'priority')
+            ->get()
+            ->groupBy('notification_type');
+
         // Get pending approvals count
         $staffRoles = $staff->exeatRoles->pluck('role')->toArray();
         $pendingApprovalsCount = 0;
-        
+
         foreach ($staffRoles as $role) {
             $status = match ($role) {
                 'cmd' => 'cmd_review',
@@ -341,12 +344,12 @@ class StaffNotificationController extends Controller
                 'security' => 'security_signout',
                 default => null
             };
-            
+
             if ($status) {
                 $pendingApprovalsCount += ExeatRequest::where('status', $status)->count();
             }
         }
-        
+
         $summary = [
             'total_notifications' => $query->count(),
             'unread_notifications' => ExeatNotification::where('recipient_type', ExeatNotification::RECIPIENT_STAFF)
@@ -378,7 +381,7 @@ class StaffNotificationController extends Controller
     public function show(int $notificationId): JsonResponse
     {
         $staff = Auth::user();
-        
+
         $notification = ExeatNotification::where('id', $notificationId)
             ->where('recipient_type', ExeatNotification::RECIPIENT_STAFF)
             ->where('recipient_id', $staff->id)
@@ -412,7 +415,7 @@ class StaffNotificationController extends Controller
     public function getExeatNotifications(int $exeatId): JsonResponse
     {
         $staff = Auth::user();
-        
+
         $notifications = ExeatNotification::where('exeat_request_id', $exeatId)
             ->where('recipient_type', ExeatNotification::RECIPIENT_STAFF)
             ->where('recipient_id', $staff->id)
@@ -438,7 +441,7 @@ class StaffNotificationController extends Controller
         ]);
 
         $staff = Auth::user();
-        
+
         // Check if staff has permission to send reminders
         if (!$staff->hasPermission('send_reminders')) {
             return response()->json([
@@ -446,9 +449,9 @@ class StaffNotificationController extends Controller
                 'message' => 'You do not have permission to send reminders'
             ], 403);
         }
-        
+
         $exeatRequest = ExeatRequest::find($request->exeat_id);
-        
+
         $notifications = $this->notificationService->sendReminderNotification(
             $exeatRequest,
             $request->reminder_type
@@ -474,7 +477,7 @@ class StaffNotificationController extends Controller
         ]);
 
         $staff = Auth::user();
-        
+
         // Check if staff has permission to send emergency notifications
         if (!$staff->hasPermission('send_emergency_notifications')) {
             return response()->json([
@@ -482,9 +485,9 @@ class StaffNotificationController extends Controller
                 'message' => 'You do not have permission to send emergency notifications'
             ], 403);
         }
-        
+
         $exeatRequest = ExeatRequest::find($request->exeat_id);
-        
+
         $notifications = $this->notificationService->sendEmergencyNotification(
             $exeatRequest,
             $request->message
@@ -530,45 +533,28 @@ class StaffNotificationController extends Controller
             'Connection' => 'keep-alive'
         ];
 
-        $callback = function () use ($user) {
-            $prevCount = null;
-            $prevLatest = null;
-            if (function_exists('set_time_limit')) {
-                @set_time_limit(0);
-            }
-            while (true) {
-                $query = ExeatNotification::where('recipient_type', ExeatNotification::RECIPIENT_STAFF)
-                    ->where('recipient_id', $user->id);
-                $count = (clone $query)->where('is_read', false)->count();
-                $latestNotification = (clone $query)->orderBy('id', 'desc')->first();
-                $latest = $latestNotification?->id;
-                $latestEvent = null;
-                if ($latestNotification && is_array($latestNotification->data)) {
-                    $latestEvent = $latestNotification->data['event'] ?? null;
-                }
+        // FIXED: Infinite loop removed to prevent server crash (PHP worker starvation).
+        // This endpoint now returns a single snapshot. The frontend should use polling or a real WebSocket service.
+        $query = ExeatNotification::where('recipient_type', ExeatNotification::RECIPIENT_STAFF)
+            ->where('recipient_id', $user->id);
 
-                if ($prevCount === null) {
-                    $prevCount = $count;
-                    $prevLatest = $latest;
-                }
+        $count = (clone $query)->where('is_read', false)->count();
+        $latestNotification = (clone $query)->orderBy('id', 'desc')->first();
+        $latest = $latestNotification?->id;
+        $latestEvent = null;
 
-                if ($count !== $prevCount || $latest !== $prevLatest) {
-                    $data = json_encode(['unread_count' => $count, 'latest_id' => $latest, 'latest_event' => $latestEvent]);
-                    echo "data: {$data}\n\n";
-                    @ob_flush();
-                    flush();
-                    $prevCount = $count;
-                    $prevLatest = $latest;
-                }
+        if ($latestNotification && is_array($latestNotification->data)) {
+            $latestEvent = $latestNotification->data['event'] ?? null;
+        }
 
-                echo ":heartbeat\n\n";
-                if (function_exists('connection_aborted') && connection_aborted()) {
-                    break;
-                }
-                usleep(500000);
-            }
-        };
+        $data = json_encode(['unread_count' => $count, 'latest_id' => $latest, 'latest_event' => $latestEvent]);
 
-        return response()->stream($callback, 200, $headers);
+        // Return a single event and close connection
+        return response()->stream(function () use ($data) {
+            echo "data: {$data}\n\n";
+            echo "event: close\ndata: end\n\n"; // Optional: signal end
+        }, 200, $headers);
+
+
     }
 }
