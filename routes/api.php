@@ -146,6 +146,7 @@ Route::middleware('auth:sanctum')->group(function () {
         Route::get('/exeat-requests/fast-track/search', [StaffExeatRequestController::class, 'searchActionable']);
         Route::get('/exeat-requests/fast-track/list', [StaffExeatRequestController::class, 'getActionableList']);
         Route::post('/exeat-requests/fast-track/execute', [StaffExeatRequestController::class, 'executeActionable']);
+        Route::get('/exeat-requests/fast-track/history', [StaffExeatRequestController::class, 'getFastTrackHistory']);
 
         // Staff exeat statistics routes
         Route::get('/exeat-statistics', [StaffExeatStatisticsController::class, 'getExeatStatistics']);

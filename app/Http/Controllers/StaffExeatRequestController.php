@@ -1919,4 +1919,31 @@ class StaffExeatRequestController extends Controller
             'failed' => $failed
         ]);
     }
+
+    /**
+     * Get Fast Track Operation History
+     */
+    public function getFastTrackHistory(Request $request)
+    {
+        $type = $request->query('type', 'sign_out');
+        $date = $request->query('date', now()->toDateString());
+
+        // Select column based on type
+        $timeColumn = $type === 'sign_out' ? 'signout_time' : 'signin_time';
+
+        $query = \App\Models\SecuritySignout::with([
+            'exeatRequest',
+            'exeatRequest.student',
+            'security'
+        ])
+            ->whereDate($timeColumn, $date)
+            ->whereNotNull($timeColumn);
+
+        // Order by latest
+        $query->orderBy($timeColumn, 'desc');
+
+        $history = $query->paginate(20);
+
+        return response()->json($history);
+    }
 }

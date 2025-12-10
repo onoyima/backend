@@ -14,17 +14,22 @@ class Kernel extends ConsoleKernel
         // Monitor overdue exeats every hour (debts created on return)
         $schedule->command('exeat:check-overdue')
             ->hourly();
-        
+
         // Automatically expire overdue exeat requests every hour
         $schedule->command('exeat:expire-overdue')
             ->hourly()
+            ->withoutOverlapping();
+
+        // Process queued emails/notifications every minute
+        $schedule->command('queue:work --stop-when-empty')
+            ->everyMinute()
             ->withoutOverlapping();
     }
 
 
     protected function commands()
     {
-        $this->load(__DIR__.'/Commands');
+        $this->load(__DIR__ . '/Commands');
 
         require base_path('routes/console.php');
     }

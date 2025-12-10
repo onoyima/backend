@@ -27,12 +27,12 @@ class ExeatNotificationService
 
         // Try matching by hostel name (case-insensitive, tolerant to variations)
         $assignments = \App\Models\HostelAdminAssignment::where(function ($q) {
-                $q->where('status', 'active')->orWhereNull('status');
-            })
+            $q->where('status', 'active')->orWhereNull('status');
+        })
             ->whereHas('hostel', function ($q) use ($normalized, $hostelName) {
                 $q->whereRaw('LOWER(name) = ?', [$normalized])
-                  ->orWhere('name', 'LIKE', $hostelName . '%')
-                  ->orWhere('name', 'LIKE', '%' . $hostelName . '%');
+                    ->orWhere('name', 'LIKE', $hostelName . '%')
+                    ->orWhere('name', 'LIKE', '%' . $hostelName . '%');
             })
             ->with('staff')
             ->get();
@@ -43,8 +43,8 @@ class ExeatNotificationService
             $accommodationId = $accommodationHistory?->vuna_accomodation_id ?? null;
             if ($accommodationId) {
                 $assignments = \App\Models\HostelAdminAssignment::where(function ($q) {
-                        $q->where('status', 'active')->orWhereNull('status');
-                    })
+                    $q->where('status', 'active')->orWhereNull('status');
+                })
                     ->where('vuna_accomodation_id', $accommodationId)
                     ->with('staff')
                     ->get();
@@ -57,8 +57,8 @@ class ExeatNotificationService
                 ->first();
             if ($accommodation) {
                 $assignments = \App\Models\HostelAdminAssignment::where(function ($q) {
-                        $q->where('status', 'active')->orWhereNull('status');
-                    })
+                    $q->where('status', 'active')->orWhereNull('status');
+                })
                     ->where('vuna_accomodation_id', $accommodation->id)
                     ->with('staff')
                     ->get();
@@ -193,7 +193,7 @@ class ExeatNotificationService
             'priority' => ExeatNotification::PRIORITY_HIGH,
         ]);
     }
-    
+
     /**
      * Send notification about debt recalculation.
      *
@@ -207,7 +207,7 @@ class ExeatNotificationService
     {
         try {
             $message = "Your exeat debt has been recalculated due to a change in your return date. Additional amount: ₦{$additionalAmount}. Total debt: ₦{$totalAmount}.";
-            
+
             // Notify the student in-app only (email and SMS removed for cost optimization)
             $this->createNotification(
                 $exeatRequest,
@@ -398,28 +398,24 @@ class ExeatNotificationService
 
             $notifications->push($notification);
 
-            // Deliver notification synchronously for in-app only
-            // For staff comments, we'll handle email and SMS separately
-            $deliveryResults = [];
+            // Queue notification for delivery
+            // For staff comments, we'll still handle email and SMS separately but they should also be queued ideally
             if ($type !== ExeatNotification::TYPE_STAFF_COMMENT) {
-                $deliveryResults = $this->deliveryService->deliverNotificationSync($notification);
+                // Use the queue delivery method we updated
+                $this->deliveryService->queueNotificationDelivery($notification);
+            } else {
+                // For staff comments, for now keep the existing logic or update it later
+                // The current staff comment logic has manual delivery calls which might be slow
+                // convert those to queue calls
+                $this->deliveryService->queueNotificationDelivery($notification);
             }
 
-            // Log delivery results
-            foreach ($deliveryResults as $method => $result) {
-                if ($result['success']) {
-                    Log::info("Notification delivered via {$method}", [
-                        'notification_id' => $notification->id,
-                        'recipient_type' => $notification->recipient_type,
-                        'recipient_id' => $notification->recipient_id
-                    ]);
-                } else {
-                    Log::warning("Failed to deliver notification via {$method}", [
-                        'notification_id' => $notification->id,
-                        'reason' => $result['reason']
-                    ]);
-                }
-            }
+            // Queue logging handled in the job
+            Log::info("Notification queued", [
+                'notification_id' => $notification->id,
+                'recipient_type' => $notification->recipient_type,
+                'recipient_id' => $notification->recipient_id
+            ]);
         }
 
         return $notifications;
@@ -606,11 +602,11 @@ class ExeatNotificationService
 
             // Create a separate SMS notification with just the raw comment
             $smsNotification = $this->createStaffCommentSmsNotification(
-                $exeatRequest, 
-                $student, 
+                $exeatRequest,
+                $student,
                 $smsMessage
             );
-            
+
             // Deliver SMS with raw comment only
             $this->deliveryService->deliverNotification($smsNotification, 'sms');
 
@@ -707,10 +703,12 @@ class ExeatNotificationService
             case 'approval_overdue':
                 return $this->getApprovalRecipients($exeatRequest, $exeatRequest->status);
             case 'return_reminder':
-                return [[
-                    'type' => ExeatNotification::RECIPIENT_STUDENT,
-                    'id' => $exeatRequest->student_id
-                ]];
+                return [
+                    [
+                        'type' => ExeatNotification::RECIPIENT_STUDENT,
+                        'id' => $exeatRequest->student_id
+                    ]
+                ];
             default:
                 return [];
         }
@@ -722,10 +720,12 @@ class ExeatNotificationService
     protected function getEmergencyRecipients(ExeatRequest $exeatRequest): array
     {
         return array_merge(
-            [[
-                'type' => ExeatNotification::RECIPIENT_STUDENT,
-                'id' => $exeatRequest->student_id
-            ]],
+            [
+                [
+                    'type' => ExeatNotification::RECIPIENT_STUDENT,
+                    'id' => $exeatRequest->student_id
+                ]
+            ],
             $this->getAdminStaff(),
             $this->getDeanStaff(),
             $this->getSecretaryStaff()
@@ -882,18 +882,18 @@ class ExeatNotificationService
     {
         // Get specific hostel admin for the student's accommodation
         $studentAccommodation = $exeatRequest->student_accommodation;
-        
+
         if (!empty($studentAccommodation)) {
             // Find the hostel by name
             $hostel = \App\Models\VunaAccomodation::where('name', $studentAccommodation)->first();
-            
+
             if ($hostel) {
                 // Get staff assigned to this specific hostel
                 $assignedStaff = \App\Models\HostelAdminAssignment::where('vuna_accomodation_id', $hostel->id)
                     ->where('status', 'active')
                     ->with('staff')
                     ->get();
-                
+
                 if ($assignedStaff->isNotEmpty()) {
                     return $assignedStaff->map(function ($assignment) {
                         return [
@@ -904,7 +904,7 @@ class ExeatNotificationService
                 }
             }
         }
-        
+
         // Fallback: Get all hostel admins if no specific assignment found
         return Staff::whereHas('exeatRoles', function ($query) {
             $query->whereHas('role', function ($roleQuery) {
@@ -1017,10 +1017,12 @@ class ExeatNotificationService
     public function sendSubmissionConfirmation(ExeatRequest $exeatRequest): void
     {
         $student = $exeatRequest->student;
-        $recipients = [[
-            'type' => ExeatNotification::RECIPIENT_STUDENT,
-            'id' => $exeatRequest->student_id
-        ]];
+        $recipients = [
+            [
+                'type' => ExeatNotification::RECIPIENT_STUDENT,
+                'id' => $exeatRequest->student_id
+            ]
+        ];
 
         $studentName = $student ? "{$student->fname} {$student->lname}" : 'Student';
         $title = 'Exeat Request Submitted Successfully';
@@ -1045,10 +1047,12 @@ class ExeatNotificationService
     public function sendRejectionNotification(ExeatRequest $exeatRequest, ?string $comment = null): void
     {
         $student = $exeatRequest->student;
-        $recipients = [[
-            'type' => ExeatNotification::RECIPIENT_STUDENT,
-            'id' => $exeatRequest->student_id
-        ]];
+        $recipients = [
+            [
+                'type' => ExeatNotification::RECIPIENT_STUDENT,
+                'id' => $exeatRequest->student_id
+            ]
+        ];
 
         $studentName = $student ? "{$student->fname} {$student->lname}" : 'Student';
         $title = 'Exeat Request Rejected';
