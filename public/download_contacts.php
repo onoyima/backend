@@ -1,16 +1,16 @@
 <?php
 // ---------- DATABASE CONNECTION ----------
-// $host = "127.0.0.1";
-// $port = 3306;
-// $dbname = "dbipfkhop9oqna";
-// $username = "uwee0g3bir9pr";
-// $password = "4&e21%61sh11";
-
 $host = "127.0.0.1";
 $port = 3306;
-$dbname = "exeat";
-$username = "root";
-$password = "";
+$dbname = "dbipfkhop9oqna";
+$username = "uwee0g3bir9pr";
+$password = "4&e21%61sh11";
+
+// $host = "127.0.0.1";
+// $port = 3306;
+// $dbname = "exeat";
+// $username = "root";
+// $password = "";
 
 $mysqli = new mysqli($host, $username, $password, $dbname, $port);
 if ($mysqli->connect_errno) {
@@ -180,7 +180,8 @@ while ($row = $result->fetch_assoc()) {
 
 // ---------- IDENTIFY DUPLICATES ----------
 $duplicates = array_filter($phone_map, function ($v) {
-    return count($v) > 1; });
+    return count($v) > 1;
+});
 $shared_numbers = $duplicates;
 $total_shared = count($shared_numbers);
 
@@ -494,9 +495,9 @@ $levels = ['100', '200', '300', '400', '500', '600', 'PG'];
 
             if($end < $totalPages) echo ' ... <a href="?page=' .$totalPages.'&filter='.$filter.' &level='.$level_filter.'">'.$totalPages.'</a>';
 
-                    if($page < $totalPages) echo '<a href=" ?page='.($page+1).' &filter='.$filter.'
+                        if($page < $totalPages) echo '<a href=" ?page='.($page+1).' &filter='.$filter.'
             &level='.$level_filter.'">Next &raquo;</a>';
-                    ?>
+                        ?>
     <?php endif; ?>
     </div>
 </div>
